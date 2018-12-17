@@ -120,17 +120,22 @@ namespace XCode.DataAccessLayer
         /// <returns></returns>
         String FormatName(String name);
 
+        /// <summary>格式化表名，考虑表前缀和Owner</summary>
+        /// <param name="tableName">名称</param>
+        /// <returns></returns>
+        String FormatTableName(String tableName);
+
         /// <summary>格式化数据为SQL数据</summary>
         /// <param name="field">字段</param>
         /// <param name="value">数值</param>
         /// <returns></returns>
         String FormatValue(IDataColumn field, Object value);
 
-        /// <summary>格式化标识列，返回插入数据时所用的表达式，如果字段本身支持自增，则返回空</summary>
-        /// <param name="field">字段</param>
-        /// <param name="value">数值</param>
-        /// <returns></returns>
-        String FormatIdentity(IDataColumn field, Object value);
+        ///// <summary>格式化标识列，返回插入数据时所用的表达式，如果字段本身支持自增，则返回空</summary>
+        ///// <param name="field">字段</param>
+        ///// <param name="value">数值</param>
+        ///// <returns></returns>
+        //String FormatIdentity(IDataColumn field, Object value);
 
         /// <summary>格式化参数名</summary>
         /// <param name="name">名称</param>
@@ -160,6 +165,9 @@ namespace XCode.DataAccessLayer
 
         /// <summary>本连接数据只读。需求不够强劲，暂不支持在连接字符串中设置</summary>
         Boolean Readonly { get; set; }
+
+        /// <summary>数据层缓存有效期。单位秒</summary>
+        Int32 DataCache { get; set; }
 
         /// <summary>表前缀。所有在该连接上的表名都自动增加该前缀</summary>
         String TablePrefix { get; set; }

@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Text;
 using System.Web;
+using NewLife.Collections;
 using NewLife.Log;
 using NewLife.Model;
 using NewLife.Reflection;
@@ -50,10 +51,10 @@ namespace XCode.Membership
             var fact = EntityFactory.CreateOperate(entity.GetType());
 
             // 构造字段数据的字符串表示形式
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             foreach (var fi in fact.Fields)
             {
-                if (action == "修改" && !fi.PrimaryKey && !entity.Dirtys[fi.Name]) continue;
+                if (action == "修改" && !fi.PrimaryKey && !entity.IsDirty(fi.Name)) continue;
                 var v = entity[fi.Name];
                 // 空字符串不写日志
                 if (action == "添加" || action == "删除")
@@ -78,7 +79,7 @@ namespace XCode.Membership
                 name = user + "";
             }
 
-            WriteLog(entity.GetType(), action, sb.ToString(), userid, name);
+            WriteLog(entity.GetType(), action, sb.Put(true), userid, name);
         }
 
         /// <summary>是否使用日志</summary>

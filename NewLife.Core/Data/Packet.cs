@@ -2,6 +2,7 @@
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using NewLife.Collections;
 
 namespace NewLife.Data
 {
@@ -73,7 +74,17 @@ namespace NewLife.Data
         /// <summary>获取/设置 指定位置的字节</summary>
         /// <param name="index"></param>
         /// <returns></returns>
-        public Byte this[Int32 index] { get { return Data[Offset + index]; } set { Data[Offset + index] = value; } }
+        public Byte this[Int32 index]
+        {
+            get
+            {
+                var p = Offset + index;
+                if (p >= Data.Length && Next != null) return Next[p - Data.Length];
+
+                return Data[p];
+            }
+            set { Data[Offset + index] = value; }
+        }
         #endregion
 
         #region 方法
@@ -153,22 +164,22 @@ namespace NewLife.Data
         {
             //return (Int32)IOHelper.IndexOf(Data, Offset, Count, data, offset, count);
 
-            var start = Offset + offset;
+            var start = offset;
             var length = data.Length;
 
-            if (count < 0 || count > Count - offset) count = Count - offset;
+            if (count < 0 || count > Total - offset) count = Total - offset;
 
             // 已匹配字节数
             var win = 0;
             // 索引加上data剩余字节数必须小于count
             for (var i = 0; i + length - win <= count; i++)
             {
-                if (Data[start + i] == data[win])
+                if (this[start + i] == data[win])
                 {
                     win++;
 
                     // 全部匹配，退出
-                    if (win >= length) return (start + i - Offset) - length + 1;
+                    if (win >= length) return (start + i) - length + 1;
                 }
                 else
                 {
@@ -203,10 +214,10 @@ namespace NewLife.Data
             if (Next == null) Data.ReadBytes(Offset, Count);
 
             // 链式包输出
-            var ms = new MemoryStream();
+            var ms = Pool.MemoryStream.Get();
             WriteTo(ms);
 
-            return ms.ToArray();
+            return ms.Put(true);
         }
 
         /// <summary>从封包中读取指定数据</summary>
@@ -224,7 +235,7 @@ namespace NewLife.Data
 
             // 链式包输出
             if (count < 0) count = Total - offset;
-            var ms = new MemoryStream();
+            var ms = Pool.MemoryStream.Get();
 
             // 遍历
             var cur = this;
@@ -246,7 +257,7 @@ namespace NewLife.Data
 
                 cur = cur.Next;
             }
-            return ms.ToArray();
+            return ms.Put(true);
 
             //// 以上算法太复杂，直接来
             //return ToArray().ReadBytes(offset, count);

@@ -32,15 +32,10 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
-    <Reference Include="System.configuration" />
     <Reference Include="System.Data" />
-    <Reference Include="System.Management" />
-    <Reference Include="System.Security" />
     <Reference Include="System.Web" />
     <Reference Include="System.Web.Extensions" />
-    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.XML" />
   </ItemGroup>
   <ItemGroup>
@@ -61,9 +56,10 @@
     <Compile Include="Common\DataSimulation.cs" />
     <Compile Include="Configuration\FieldExtension.cs" />
     <Compile Include="DataAccessLayer\Common\ConnectionPool.cs" />
-    <Compile Include="DataAccessLayer\Common\DataResult.cs" />
     <Compile Include="DataAccessLayer\Common\ITransaction.cs" />
+    <Compile Include="DataAccessLayer\DAL_Backup.cs" />
     <Compile Include="DataAccessLayer\Database\Access.cs" />
+    <Compile Include="DataAccessLayer\Database\Network.cs" />
     <Compile Include="DataAccessLayer\Database\SqlCe.cs" />
     <Compile Include="DataAccessLayer\Model\IModelResolver.cs">
       <SubType>Code</SubType>
@@ -109,6 +105,11 @@
     <Compile Include="Membership\角色.cs" />
     <Compile Include="Membership\访问统计.Biz.cs" />
     <Compile Include="Membership\访问统计.cs" />
+    <Compile Include="Service\DbClient.cs" />
+    <Compile Include="Service\DbParam.cs" />
+    <Compile Include="Service\DbServer.cs" />
+    <Compile Include="Service\DbController.cs" />
+    <Compile Include="Service\LoginInfo.cs" />
     <Compile Include="Statistics\IStat.cs" />
     <Compile Include="Statistics\StatHelper.cs" />
     <Compile Include="Statistics\StatLevels.cs" />
@@ -239,6 +240,9 @@
       <DependentUpon>生成实体类.tt</DependentUpon>
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
+    </None>
+    <None Include="ModelSchema.xsd">
+      <SubType>Designer</SubType>
     </None>
     <None Include="tools\install.ps1" />
     <None Include="Membership\生成实体类.log">

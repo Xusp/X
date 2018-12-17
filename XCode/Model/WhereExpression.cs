@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using NewLife.Collections;
 
 namespace XCode
 {
@@ -31,7 +32,7 @@ namespace XCode
         public Operator Operator { get; set; }
 
         /// <summary>是否为空</summary>
-        public Boolean Empty { get { return Left == null && Right == null; } }
+        public Boolean Empty => Left == null && Right == null;
         #endregion
 
         #region 构造
@@ -67,7 +68,7 @@ namespace XCode
             GetString(builder, ps, Left);
 
             // 右侧表达式
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             GetString(sb, ps, Right);
 
             // 中间运算符
@@ -82,7 +83,7 @@ namespace XCode
                 }
             }
 
-            builder.Append(sb);
+            builder.Append(sb.Put(true));
         }
 
         private void GetString(StringBuilder builder, IDictionary<String, Object> ps, Expression exp)

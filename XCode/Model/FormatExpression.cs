@@ -5,6 +5,7 @@ using System.Text;
 using NewLife.Reflection;
 using XCode.Configuration;
 using XCode.DataAccessLayer;
+using System.Linq;
 
 namespace XCode
 {
@@ -51,10 +52,16 @@ namespace XCode
             {
                 var op = fi.Factory;
                 var val = "";
-                if (Value is String || Value is SelectBuilder)
-                    val = "'" + Value + "'";
+                if (Value is SelectBuilder sb)
+                    val = sb;
                 else if (Value is IList<Object> ems)
                     val = ems.Join(",", e => op.FormatValue(fi, e));
+                else if (Value is String)
+                {
+                    var list = (Value + "").Split(",").ToList();
+                    list.RemoveAll(e => (e + "").Trim().IsNullOrEmpty() || e.Contains("%")); //处理类似 in("xxx,xxx,xxx"),和 like "%,xxxx,%" 这两种情况下无法正常格式化查询字符串
+                    val = list.Count > 1 ? list.Join(",", e => op.FormatValue(fi, e)) : op.FormatValue(fi, Value);
+                }
                 else
                     val = op.FormatValue(fi, Value);
 
@@ -69,9 +76,15 @@ namespace XCode
             if (Format.Contains(" In("))
             {
                 // String/SelectBuilder 不走参数化
-                if (Value is String || Value is SelectBuilder)
+                if (Value is String)
                 {
-                    builder.AppendFormat(Format, fi.FormatedName, "'" + Value + "'");
+                    var val = fi.Factory.FormatValue(fi, Value);
+                    builder.AppendFormat(Format, fi.FormatedName, val);
+                    return;
+                }
+                if (Value is SelectBuilder)
+                {
+                    builder.AppendFormat(Format, fi.FormatedName, Value);
                     return;
                 }
 

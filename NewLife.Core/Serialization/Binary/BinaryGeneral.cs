@@ -34,7 +34,7 @@ namespace NewLife.Serialization
                     return true;
                 case TypeCode.DBNull:
                 case TypeCode.Empty:
-                    Host.Write((Byte)0);
+                    Host.Write(0);
                     return true;
                 case TypeCode.DateTime:
                     Write(((DateTime)value).ToInt());
@@ -446,7 +446,7 @@ namespace NewLife.Serialization
         #region 字符串
         /// <summary>从当前流中读取下一个字符，并根据所使用的 Encoding 和从流中读取的特定字符，提升流的当前位置。</summary>
         /// <returns></returns>
-        public virtual Char ReadChar() { return Convert.ToChar(ReadByte()); }
+        public virtual Char ReadChar() => Convert.ToChar(ReadByte());
 
         /// <summary>从当前流中读取一个字符串。字符串有长度前缀，一次 7 位地被编码为整数。</summary>
         /// <returns></returns>
@@ -454,8 +454,8 @@ namespace NewLife.Serialization
         {
             // 先读长度
             var n = Host.ReadSize();
-            if (n < 0) return null;
-            if (n == 0) return String.Empty;
+            if (n <= 0) return null;
+            //if (n == 0) return String.Empty;
 
             var buffer = ReadBytes(n);
 
@@ -509,7 +509,7 @@ namespace NewLife.Serialization
             {
                 b = ReadByte();
                 // 必须转为Int32，否则可能溢出
-                rs += (Int32)((b & 0x7f) << n);
+                rs += (b & 0x7f) << n;
                 if ((b & 0x80) == 0) break;
 
                 n += 7;
@@ -542,58 +542,6 @@ namespace NewLife.Serialization
 
         #region 7位压缩编码整数
         /// <summary>
-        /// 以7位压缩格式写入32位整数，小于7位用1个字节，小于14位用2个字节。
-        /// 由每次写入的一个字节的第一位标记后面的字节是否还是当前数据，所以每个字节实际可利用存储空间只有后7位。
-        /// </summary>
-        /// <param name="value">数值</param>
-        /// <returns>实际写入字节数</returns>
-        public Int32 WriteEncoded(Int16 value)
-        {
-            var list = new List<Byte>();
-
-            var count = 1;
-            var num = (UInt16)value;
-            while (num >= 0x80)
-            {
-                list.Add((Byte)(num | 0x80));
-                num = (UInt16)(num >> 7);
-
-                count++;
-            }
-            list.Add((Byte)num);
-
-            Write(list.ToArray(), 0, list.Count);
-
-            return count;
-        }
-
-        /// <summary>
-        /// 以7位压缩格式写入32位整数，小于7位用1个字节，小于14位用2个字节。
-        /// 由每次写入的一个字节的第一位标记后面的字节是否还是当前数据，所以每个字节实际可利用存储空间只有后7位。
-        /// </summary>
-        /// <param name="value">数值</param>
-        /// <returns>实际写入字节数</returns>
-        public Int32 WriteEncoded(Int32 value)
-        {
-            var list = new List<Byte>();
-
-            var count = 1;
-            var num = (UInt32)value;
-            while (num >= 0x80)
-            {
-                list.Add((Byte)(num | 0x80));
-                num = num >> 7;
-
-                count++;
-            }
-            list.Add((Byte)num);
-
-            Write(list.ToArray(), 0, list.Count);
-
-            return count;
-        }
-
-        /// <summary>
         /// 以7位压缩格式写入64位整数，小于7位用1个字节，小于14位用2个字节。
         /// 由每次写入的一个字节的第一位标记后面的字节是否还是当前数据，所以每个字节实际可利用存储空间只有后7位。
         /// </summary>
@@ -601,20 +549,21 @@ namespace NewLife.Serialization
         /// <returns>实际写入字节数</returns>
         public Int32 WriteEncoded(Int64 value)
         {
-            var list = new List<Byte>();
+            var arr = new Byte[16];
+            var k = 0;
 
             var count = 1;
             var num = (UInt64)value;
             while (num >= 0x80)
             {
-                list.Add((Byte)(num | 0x80));
+                arr[k++] = (Byte)(num | 0x80);
                 num = num >> 7;
 
                 count++;
             }
-            list.Add((Byte)num);
+            arr[k++] = (Byte)num;
 
-            Write(list.ToArray(), 0, list.Count);
+            Write(arr, 0, k);
 
             return count;
         }

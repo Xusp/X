@@ -58,7 +58,7 @@ namespace NewLife.Remoting
 
             // 如果服务只有一个二进制参数，则走快速通道
             var fast = api.IsPacketParameter && api.IsPacketReturn;
-            if (!fast)
+            if (!api.IsPacketParameter)
             {
                 // 不允许参数字典为空
                 var dic = args == null || args.Total == 0 ?
@@ -84,17 +84,28 @@ namespace NewLife.Remoting
                 // 执行动作
                 if (rs == null)
                 {
+                    // 特殊处理参数和返回类型都是Packet的服务
                     if (fast)
                     {
                         var func = api.Method.As<Func<Packet, Packet>>(controller);
                         rs = func(args);
                     }
+                    else if (api.IsPacketParameter)
+                    {
+                        rs = controller.Invoke(api.Method, args);
+                    }
                     else
                     {
-                        // 特殊处理参数和返回类型都是Packet的服务
                         rs = controller.InvokeWithParams(api.Method, ps as IDictionary);
                     }
                     ctx.Result = rs;
+                }
+
+                // 执行动作后的过滤器
+                if (controller is IActionFilter filter2)
+                {
+                    filter2.OnActionExecuted(ctx);
+                    rs = ctx.Result;
                 }
             }
             catch (ThreadAbortException) { throw; }
@@ -102,18 +113,26 @@ namespace NewLife.Remoting
             {
                 //rs = OnException(ctx, ex);
                 ctx.Exception = ex.GetTrue();
-            }
-            finally
-            {
+
                 // 执行动作后的过滤器
                 if (controller is IActionFilter filter)
                 {
                     filter.OnActionExecuted(ctx);
                     rs = ctx.Result;
                 }
+                if (ctx.Exception != null && !ctx.ExceptionHandled) throw;
+            }
+            finally
+            {
+                //// 执行动作后的过滤器
+                //if (controller is IActionFilter filter)
+                //{
+                //    filter.OnActionExecuted(ctx);
+                //    rs = ctx.Result;
+                //}
                 ControllerContext.Current = null;
 
-                if (ctx.Exception != null && !ctx.ExceptionHandled) throw ctx.Exception;
+                //if (ctx.Exception != null && !ctx.ExceptionHandled) throw ctx.Exception;
             }
 
             //// 二进制优先通道

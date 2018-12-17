@@ -18,11 +18,11 @@ namespace System.Collections.Generic
         {
             if (collection == null) return null;
 
-            var count = collection.Count;
-            if (count == 0) return new T[0];
+            //var count = collection.Count;
+            //if (count == 0) return new T[0];
             lock (collection)
             {
-                count = collection.Count;
+                var count = collection.Count;
                 if (count == 0) return new T[0];
 
                 var arr = new T[count - index];
@@ -140,6 +140,36 @@ namespace System.Collections.Generic
             if (collection is NullableDictionary<TKey, TValue> dic && (comparer != null || dic.Comparer == comparer)) return collection as NullableDictionary<TKey, TValue>;
 
             return new NullableDictionary<TKey, TValue>(collection, comparer);
+        }
+
+        /// <summary>从队列里面获取指定个数元素</summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="collection">消费集合</param>
+        /// <param name="count">元素个数</param>
+        /// <returns></returns>
+        public static IEnumerable<T> Take<T>(this Queue<T> collection, Int32 count)
+        {
+            if (collection == null) yield break;
+
+            while (count-- > 0 && collection.Count > 0)
+            {
+                yield return collection.Dequeue();
+            }
+        }
+
+        /// <summary>从消费集合里面获取指定个数元素</summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="collection">消费集合</param>
+        /// <param name="count">元素个数</param>
+        /// <returns></returns>
+        public static IEnumerable<T> Take<T>(this IProducerConsumerCollection<T> collection, Int32 count)
+        {
+            if (collection == null) yield break;
+
+            while (count-- > 0 && collection.TryTake(out var item))
+            {
+                yield return item;
+            }
         }
     }
 }
