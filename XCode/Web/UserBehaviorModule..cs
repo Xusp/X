@@ -12,9 +12,6 @@ using NewLife.Model;
 using NewLife.Threading;
 using NewLife.Web;
 using XCode.Membership;
-#if !NET4
-using TaskEx = System.Threading.Tasks.Task;
-#endif
 
 namespace XCode.Web
 {
@@ -32,6 +29,9 @@ namespace XCode.Web
             //context.PreRequestHandlerExecute += OnSession;
             context.PostRequestHandlerExecute += OnPost;
             context.Error += OnPost;
+
+            context.BeginRequest += OnInit;
+            context.PostReleaseRequestState += OnEnd;
         }
 
         private void OnSession(Object sender, EventArgs e)
@@ -51,6 +51,10 @@ namespace XCode.Web
         /// <summary>访问统计</summary>
         public static Boolean WebStatistics { get; set; }
 
+        void OnInit(Object sender, EventArgs e) => ManageProvider.UserHost = GetIP();
+
+        void OnEnd(Object sender, EventArgs e) => ManageProvider.UserHost = null;
+
         void OnPost(Object sender, EventArgs e)
         {
             if (!WebOnline && !WebBehavior && !WebStatistics) return;
@@ -64,7 +68,7 @@ namespace XCode.Web
             var user = ctx.User?.Identity as IManageUser ?? ManageProvider.User as IManageUser;
 
             var sid = ctx.Session?.SessionID;
-            var ip = WebHelper.UserHost;
+            var ip = GetIP();
 
             var page = GetPage(req);
 
@@ -184,6 +188,25 @@ namespace XCode.Web
             if (ex != null && ex is HttpException && ex.InnerException != null) ex = ex.InnerException;
 
             return ex;
+        }
+
+        String GetIP()
+        {
+            var ctx = HttpContext.Current;
+            if (ctx == null) return null;
+
+            var req = ctx.Request;
+            if (req == null) return null;
+
+            var ip = (String)ctx.Items["UserHostAddress"];
+            if (ip.IsNullOrEmpty()) ip = req.ServerVariables["HTTP_X_FORWARDED_FOR"];
+            if (ip.IsNullOrEmpty()) ip = req.ServerVariables["X-Real-IP"];
+            if (ip.IsNullOrEmpty()) ip = req.ServerVariables["X-Forwarded-For"];
+            if (ip.IsNullOrEmpty()) ip = req.ServerVariables["REMOTE_ADDR"];
+            if (ip.IsNullOrEmpty()) ip = req.UserHostName;
+            if (ip.IsNullOrEmpty()) ip = req.UserHostAddress;
+
+            return ip;
         }
     }
 }

@@ -253,9 +253,9 @@ namespace XCode
         /// <returns></returns>
         public virtual Int32 Update(IEntityOperate factory, String setClause, String whereClause)
         {
-            if (setClause.IsNullOrEmpty() || !setClause.Contains("=")||setClause.Contains("Or")) throw new ArgumentException("非法参数");
+            if (setClause.IsNullOrEmpty() || !setClause.Contains("=") || setClause.ToLower().Contains(" or ")) throw new ArgumentException("非法参数");
 
-            var sql = String.Format("Update {0} Set {1}", factory.FormatedTableName, setClause.Replace("And",","));
+            var sql = String.Format("Update {0} Set {1}", factory.FormatedTableName, setClause.Replace("And", ","));
             if (!String.IsNullOrEmpty(whereClause)) sql += " Where " + whereClause;
             return factory.Session.Execute(sql);
         }
@@ -357,8 +357,8 @@ namespace XCode
 
         static String InsertSQL(IEntity entity, ref IDataParameter[] parameters)
         {
-            var op = EntityFactory.CreateOperate(entity.GetType());
-            var up = op.Session.Dal.Db.UseParameter;
+            var fact = EntityFactory.CreateOperate(entity.GetType());
+            var usep = fact.Session.Dal.Db.UseParameter;
 
             /*
             * 插入数据原则：
@@ -369,46 +369,42 @@ namespace XCode
             */
 
             // 缓存参数化时的SQL语句
-            var key = "{0}_Insert".F(entity.GetType().FullName);
+            //var key = "{0}_Insert".F(entity.GetType().FullName);
             var sql = "";
 
-            StringBuilder sbNames = null;
-            StringBuilder sbValues = null;
-            if (!up || !op.Session.Items.TryGetValue(key, out var oql))
-            {
-                sbNames = Pool.StringBuilder.Get();
-                sbValues = Pool.StringBuilder.Get();
-            }
-            else
-                sql = oql + "";
+            //StringBuilder sbNames = null;
+            //StringBuilder sbValues = null;
+            //if (!up || !op.Session.Items.TryGetValue(key, out var oql))
+            //{
+            var sbNames = Pool.StringBuilder.Get();
+            var sbValues = Pool.StringBuilder.Get();
+            //}
+            //else
+            //    sql = oql + "";
 
             var dps = new List<IDataParameter>();
             // 只读列没有插入操作
-            foreach (var fi in op.Fields)
+            foreach (var fi in fact.Fields)
             {
                 var value = entity[fi.Name];
                 // 标识列不需要插入，别的类型都需要
-                if (sbNames != null && CheckIdentity(fi, value, op, sbNames, sbValues)) continue;
+                if (sbNames != null && CheckIdentity(fi, value, fact, sbNames, sbValues)) continue;
 
-                // 1，有脏数据的字段一定要参与同时对于实体有值的也应该参与（针对通过置空主键的方式另存）
-                if (!up && value == null && !entity.IsDirty(fi.Name))
-                {
-                    // 2，没有脏数据，允许空的字段不参与
-                    if (fi.IsNullable) continue;
-                    //// 3，没有脏数据，不允许空，有默认值的不参与
-                    //if (fi.DefaultValue != null) continue;
+                // 1，有脏数据的字段一定要参与
+                if (!fact.FullInsert && !entity.IsDirty(fi.Name)) continue;
 
-                    // 4，没有脏数据，不允许空，没有默认值的参与，需要智能识别并添加相应字段的默认数据
-                    value = FormatParamValue(fi, null, op);
-                }
-
-                if (sbNames != null) sbNames.Separate(", ").Append(op.FormatName(fi.ColumnName));
+                if (sbNames != null) sbNames.Separate(", ").Append(fact.FormatName(fi.ColumnName));
                 if (sbValues != null) sbValues.Separate(", ");
 
-                if (up || UseParam(fi, value))
-                    dps.Add(CreateParameter(sbValues, op, fi, value));
+                if (usep || UseParam(fi, value))
+                {
+                    var dp = CreateParameter(fact, fi, value);
+                    dps.Add(dp);
+
+                    sbValues.Append(dp.ParameterName);
+                }
                 else
-                    sbValues.Append(op.FormatValue(fi, value));
+                    sbValues.Append(fact.FormatValue(fi, value));
             }
 
             var ns = sbNames.Put(true);
@@ -419,9 +415,9 @@ namespace XCode
 
             if (!ns.IsNullOrEmpty())
             {
-                sql = String.Format("Insert Into {0}({1}) Values({2})", op.FormatedTableName, ns, vs);
-                // 缓存参数化时的SQL语句
-                if (up) op.Session.Items[key] = sql;
+                sql = String.Format("Insert Into {0}({1}) Values({2})", fact.FormatedTableName, ns, vs);
+                //// 缓存参数化时的SQL语句
+                //if (up) op.Session.Items[key] = sql;
             }
 
             return sql;
@@ -461,7 +457,7 @@ namespace XCode
 
             var def = DefaultCondition(entity);
             //if (String.IsNullOrEmpty(def)) return null;
-            if (def.Empty) return null;
+            if (def.IsEmpty) return null;
 
             // 处理累加字段
             var dfs = (entity as EntityBase).GetAddition();
@@ -487,13 +483,39 @@ namespace XCode
                 sb.Append(name);
                 sb.Append("=");
 
+                // 检查累加
+                var flag = TryCheckAdditionalValue(dfs, fi.Name, out var val, out var sign);
+
                 if (up || UseParam(fi, value))
-                    dps.Add(CreateParameter(sb, op, fi, value));
+                {
+                    var dp = CreateParameter(op, fi, flag ? val : value);
+                    dps.Add(dp);
+
+                    // 检查累加
+                    if (flag)
+                    {
+                        if (sign)
+                            sb.AppendFormat("{0}+{1}", name, dp.ParameterName);
+                        else
+                            sb.AppendFormat("{0}-{1}", name, dp.ParameterName);
+                    }
+                    else
+                    {
+                        sb.Append(dp.ParameterName);
+                    }
+                }
                 else
                 {
                     // 检查累加
-                    if (!CheckAdditionalValue(sb, dfs, fi.Name, name))
-                        sb.Append(op.FormatValue(fi, value)); // 数据
+                    if (flag)
+                    {
+                        if (sign)
+                            sb.AppendFormat("{0}+{1}", name, val);
+                        else
+                            sb.AppendFormat("{0}-{1}", name, val);
+                    }
+                    else
+                        sb.Append(op.FormatValue(fi, value));
                 }
             }
 
@@ -555,7 +577,7 @@ namespace XCode
             return false;
         }
 
-        static Object FormatParamValue(FieldItem fi, Object value, IEntityOperate eop)
+        static Object FormatParamValue(FieldItem fi, Object value, IEntityOperate fact)
         {
             if (value != null) return value;
 
@@ -592,19 +614,19 @@ namespace XCode
             return DBNull.Value;
         }
 
-        static IDataParameter CreateParameter(StringBuilder sb, IEntityOperate op, FieldItem fi, Object value)
+        static IDataParameter CreateParameter(IEntityOperate fact, FieldItem fi, Object value)
         {
-            var dp = op.Session.Dal.Db.CreateParameter(fi.ColumnName ?? fi.Name, value, fi.Field);
-
-            if (sb != null) sb.Append(dp.ParameterName);
+            var dp = fact.Session.Dal.Db.CreateParameter(fi.ColumnName ?? fi.Name, value, fi.Field);
 
             if (dp is DbParameter dbp) dbp.IsNullable = fi.IsNullable;
 
             return dp;
         }
 
-        static Boolean CheckAdditionalValue(StringBuilder sb, IDictionary<String, Object[]> dfs, String name, String cname)
+        static Boolean TryCheckAdditionalValue(IDictionary<String, Object[]> dfs, String name, out Object value, out Boolean sign)
         {
+            value = null;
+            sign = false;
             if (dfs == null || !dfs.TryGetValue(name, out var vs)) return false;
 
             var cur = vs[0];
@@ -613,8 +635,8 @@ namespace XCode
             //// 如果原始值是0，不使用累加，因为可能原始数据字段是NULL，导致累加失败
             //if (Convert.ToInt64(old) == 0) return false;
 
-            var sign = true;
-            var value = old;
+            sign = true;
+            value = old;
 
             // 计算累加数据
             switch (cur.GetType().GetTypeCode())
@@ -674,10 +696,6 @@ namespace XCode
                 default:
                     break;
             }
-            if (sign)
-                sb.AppendFormat("{0}+{1}", cname, value);
-            else
-                sb.AppendFormat("{0}-{1}", cname, value);
 
             return true;
         }

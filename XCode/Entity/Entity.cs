@@ -216,12 +216,12 @@ namespace XCode
             return func();
         }
 
-        /// <summary>保存。Insert/Update/InsertOrUpdate</summary>
+        /// <summary>保存。Insert/Update/Upsert</summary>
         /// <remarks>
         /// Save的几个场景：
         /// 1，Find, Update()
         /// 2，new, Insert()
-        /// 3，new, InsertOrUpdate
+        /// 3，new, Upsert()
         /// </remarks>
         /// <returns></returns>
         public override Int32 Save()
@@ -249,7 +249,7 @@ namespace XCode
                 Valid(isnew);
                 if (!Meta.Modules.Valid(this, isnew)) return -1;
 
-                return this.InsertOrUpdate();
+                return this.Upsert();
             }
 
             return FindCount(Persistence.GetPrimaryCondition(this), null, null, 0, 0) > 0 ? Update() : Insert();
@@ -509,9 +509,6 @@ namespace XCode
             if (list.Count > 1 && DAL.Debug)
             {
                 DAL.WriteLog("调用FindUnique(\"{0}\")不合理，只有返回唯一记录的查询条件才允许调用！", wh);
-#if !__CORE__
-                XTrace.DebugStack(5);
-#endif
             }
             return list[0];
         }
@@ -662,7 +659,7 @@ namespace XCode
         {
             var session = Meta.Session;
 
-            var builder = CreateBuilder(where, order, selects, startRowIndex, maximumRows);
+            var builder = CreateBuilder(where, order, selects, true);
             var list = LoadData(session.Query(builder, startRowIndex, maximumRows));
 
             // 如果正在使用单对象缓存，则批量进入
@@ -762,7 +759,7 @@ namespace XCode
                         if (max <= 0) return new List<TEntity>();
 
                         var start = (Int32)(count - (startRowIndex + maximumRows));
-                        var builder2 = CreateBuilder(where, order2, selects, start, max);
+                        var builder2 = CreateBuilder(where, order2, selects);
                         var list = LoadData(session.Query(builder2, start, max));
                         if (list == null || list.Count < 1) return list;
 
@@ -777,7 +774,7 @@ namespace XCode
             }
             #endregion
 
-            var builder = CreateBuilder(where, order, selects, startRowIndex, maximumRows);
+            var builder = CreateBuilder(where, order, selects);
             var list2 = LoadData(session.Query(builder, startRowIndex, maximumRows));
 
             // 如果正在使用单对象缓存，则批量进入
@@ -802,29 +799,13 @@ namespace XCode
                 var rows = 0L;
 
                 // 如果总记录数超过10万，为了提高性能，返回快速查找且带有缓存的总记录数
-                if ((where == null || where is WhereExpression wh && wh.Empty) && session.LongCount > 100_000)
+                if ((where == null || where.IsEmpty) && session.LongCount > 100_000)
                     rows = session.LongCount;
                 else
                     rows = FindCount(where, null, selects, 0, 0);
                 if (rows <= 0) return new List<TEntity>();
 
                 page.TotalCount = rows;
-            }
-
-            // 统计数据。100万以上数据要求带where才支持统计
-            if (page.RetrieveState && page.State == null && (Meta.Session.LongCount < 1_000_000 || where != null))
-            {
-                // 找到所有数字字段，进行求和统计
-                var numbers = Meta.Fields.Where(e => e.Type.IsInt() && !e.IsIdentity).ToList();
-                if (numbers.Count > 0)
-                {
-                    var concat = new ConcatExpression();
-                    foreach (var item in numbers)
-                    {
-                        concat &= item.Sum();
-                    }
-                    page.State = FindAll(where, null, concat).FirstOrDefault();
-                }
             }
 
             // 验证排序字段，避免非法
@@ -841,10 +822,42 @@ namespace XCode
             }
 
             // 采用起始行还是分页
+            IList<TEntity> list = null;
             if (page.StartRow >= 0)
-                return FindAll(where, orderby, selects, page.StartRow, page.PageSize);
+                list = FindAll(where, orderby, selects, page.StartRow, page.PageSize);
             else
-                return FindAll(where, orderby, selects, (page.PageIndex - 1) * page.PageSize, page.PageSize);
+                list = FindAll(where, orderby, selects, (page.PageIndex - 1) * page.PageSize, page.PageSize);
+
+            if (list == null || list.Count == 0) return list;
+
+            // 统计数据。100万以上数据要求带where才支持统计
+            if (page.RetrieveState && page.State == null &&
+                (page.RetrieveTotalCount && page.TotalCount < 10_000_000
+                || Meta.Session.LongCount < 10_000_000 || where != null)
+                )
+            {
+                var selectStat = Meta.Factory.SelectStat;
+                if (!selectStat.IsNullOrEmpty())
+                {
+                    page.State = FindAll(where, null, selectStat).FirstOrDefault();
+                }
+                else
+                {
+                    // 找到所有数字字段，进行求和统计
+                    var numbers = Meta.Fields.Where(e => e.Type.IsInt() && !e.IsIdentity).ToList();
+                    if (numbers.Count > 0)
+                    {
+                        var concat = new ConcatExpression();
+                        foreach (var item in numbers)
+                        {
+                            concat &= item.Sum();
+                        }
+                        page.State = FindAll(where, null, concat).FirstOrDefault();
+                    }
+                }
+            }
+
+            return list;
         }
 
         /// <summary>执行SQl获取数据集</summary>
@@ -855,6 +868,24 @@ namespace XCode
             var session = Meta.Session;
 
             return LoadData(session.Query(sql));
+        }
+
+        /// <summary>查询数据，返回内存表DbTable而不是实体列表</summary>
+        /// <remarks>
+        /// 最经典的批量查询，看这个Select @selects From Table Where @where Order By @order Limit @startRowIndex,@maximumRows，你就明白各参数的意思了。
+        /// </remarks>
+        /// <param name="where">条件字句，不带Where</param>
+        /// <param name="order">排序字句，不带Order By</param>
+        /// <param name="selects">查询列，默认null表示所有字段</param>
+        /// <param name="startRowIndex">开始行，0表示第一行</param>
+        /// <param name="maximumRows">最大返回行数，0表示所有行</param>
+        /// <returns>内存表</returns>
+        public static DbTable FindData(Expression where, String order, String selects, Int64 startRowIndex, Int64 maximumRows)
+        {
+            var session = Meta.Session;
+
+            var builder = CreateBuilder(where, order, selects);
+            return session.Query(builder, startRowIndex, maximumRows);
         }
         #endregion
 
@@ -949,7 +980,8 @@ namespace XCode
         /// <returns>实体集</returns>
         public static SelectBuilder FindSQL(String where, String order, String selects, Int32 startRowIndex = 0, Int32 maximumRows = 0)
         {
-            var builder = CreateBuilder(where, order, selects, startRowIndex, maximumRows, false);
+            var needOrderByID = startRowIndex > 0 || maximumRows > 0;
+            var builder = CreateBuilder(where, order, selects, needOrderByID);
             return Meta.Session.Dal.PageSplit(builder, startRowIndex, maximumRows);
         }
 
@@ -1133,19 +1165,24 @@ namespace XCode
         #endregion
 
         #region 构造SQL语句
-        static SelectBuilder CreateBuilder(Expression where, String order, String selects, Int64 startRowIndex, Int64 maximumRows, Boolean needOrderByID = true)
+        /// <summary>构造SQL查询语句</summary>
+        /// <param name="where">条件</param>
+        /// <param name="order">排序</param>
+        /// <param name="selects">选择列</param>
+        /// <returns></returns>
+        public static SelectBuilder CreateBuilder(Expression where, String order, String selects)
         {
             var session = Meta.Session;
             var ps = session.Dal.Db.UseParameter ? new Dictionary<String, Object>() : null;
             var wh = where?.GetString(ps);
-            var builder = CreateBuilder(wh, order, selects, startRowIndex, maximumRows, needOrderByID);
+            var builder = CreateBuilder(wh, order, selects, true);
 
             builder = FixParam(builder, ps);
 
             return builder;
         }
 
-        static SelectBuilder CreateBuilder(String where, String order, String selects, Int64 startRowIndex, Int64 maximumRows, Boolean needOrderByID = true)
+        static SelectBuilder CreateBuilder(String where, String order, String selects, Boolean needOrderByID)
         {
             var builder = new SelectBuilder
             {
@@ -1179,7 +1216,7 @@ namespace XCode
 
             // XCode对于默认排序的规则：自增主键降序，其它情况默认
             // 返回所有记录
-            if (!needOrderByID && startRowIndex <= 0 && maximumRows <= 0) return builder;
+            if (!needOrderByID) return builder;
 
             var fi = Meta.Table.Identity;
             if (fi != null)

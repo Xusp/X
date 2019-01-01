@@ -6,11 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
-#if __MOBILE__
-#elif __CORE__
-#else
-using System.Web;
-#endif
 using NewLife.Log;
 
 namespace NewLife.Reflection
@@ -102,7 +97,7 @@ namespace NewLife.Reflection
             {
                 try
                 {
-#if !__IOS__ && !__CORE__
+#if !__CORE__
                     return Asm == null || Asm is _AssemblyBuilder || Asm.IsDynamic ? null : Asm.Location;
 #else
                     return Asm == null || Asm.IsDynamic ? null : Asm.Location;
@@ -129,7 +124,6 @@ namespace NewLife.Reflection
 
         static AssemblyX()
         {
-#if !__MOBILE__
             AppDomain.CurrentDomain.ReflectionOnlyAssemblyResolve += (sender, args) =>
             {
                 var flag = XTrace.Debug && XTrace.Log.Level <= LogLevel.Debug;
@@ -142,7 +136,6 @@ namespace NewLife.Reflection
                 if (flag) XTrace.WriteLine("[{0}]请求加载[{1}]", args.RequestingAssembly?.FullName, args.Name);
                 return OnResolve(args.Name);
             };
-#endif
         }
         #endregion
 
@@ -538,11 +531,7 @@ namespace NewLife.Reflection
 
                     var basedir = AppDomain.CurrentDomain.BaseDirectory;
                     set.Add(basedir);
-#if !__MOBILE__ && !__CORE__
-                    if (HttpRuntime.AppDomainId != null) set.Add(HttpRuntime.BinDirectory);
-#else
                     if (Directory.Exists("bin".GetFullPath())) set.Add("bin".GetFullPath());
-#endif
                     var plugin = Setting.Current.GetPluginPath();
                     if (!set.Contains(plugin)) set.Add(plugin);
 
@@ -619,7 +608,7 @@ namespace NewLife.Reflection
                 if (loadeds.Any(e => e.Location.EqualIgnoreCase(item)) ||
                     loadeds2.Any(e => e.Location.EqualIgnoreCase(item))) continue;
 
-#if !__MOBILE__ && !__CORE__
+#if !__CORE__
                 var asm = ReflectionOnlyLoadFrom(item, ver);
                 if (asm == null) continue;
 #else
@@ -654,15 +643,15 @@ namespace NewLife.Reflection
             }
         }
 
-#if !__MOBILE__ && !__CORE__
+#if !__CORE__
         /// <summary>只反射加载指定路径的所有程序集</summary>
         /// <param name="file"></param>
         /// <param name="ver"></param>
         /// <returns></returns>
         public static Assembly ReflectionOnlyLoadFrom(String file, Version ver = null)
         {
-            // 仅加载.Net文件，并且小于等于当前版本
-            if (!PEImage.CanLoad(file, ver, XTrace.Debug)) return null;
+            //// 仅加载.Net文件，并且小于等于当前版本
+            //if (!PEImage.CanLoad(file, ver, XTrace.Debug)) return null;
 
             try
             {

@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Threading;
-using NewLife.Data;
+using NewLife.Collections;
 using NewLife.Net;
 
 namespace NewLife.Remoting
@@ -30,7 +28,7 @@ namespace NewLife.Remoting
 
                 var mi = act.Method;
 
-                var sb = new StringBuilder();
+                var sb = Pool.StringBuilder.Get();
                 sb.AppendFormat("{0} {1}", mi.ReturnType.Name, act.Name);
                 sb.Append("(");
 
@@ -46,58 +44,32 @@ namespace NewLife.Remoting
                 var des = mi.GetDescription();
                 if (!des.IsNullOrEmpty()) sb.AppendFormat(" {0}", des);
 
-                list.Add(sb.ToString());
+                list.Add(sb.Put(true));
             }
 
             return _all = list.ToArray();
         }
 
+        private readonly String _MachineName = Environment.MachineName;
+        private readonly String _UserName = Environment.UserName;
         /// <summary>服务器信息，用户健康检测</summary>
+        /// <param name="state">状态信息</param>
         /// <returns></returns>
-        public Object Info()
+        public Object Info(String state)
         {
             var ctx = ControllerContext.Current;
             var ns = ctx?.Session as INetSession;
 
             var rs = new
             {
-                Environment.MachineName,
-                Environment.UserName,
+                MachineNam = _MachineName,
+                UserName = _UserName,
                 Time = DateTime.Now,
                 LocalIP = NetHelper.MyIP() + "",
                 Remote = ns?.Remote?.EndPoint + "",
+                State = state,
             };
             return rs;
         }
-
-#if DEBUG
-        ///// <summary>获取指定种类的环境信息</summary>
-        ///// <param name="kind"></param>
-        ///// <returns></returns>
-        //public String Info(String kind)
-        //{
-        //    switch ((kind + "").ToLower())
-        //    {
-        //        case "machine": return Environment.MachineName;
-        //        case "user": return Environment.UserName;
-        //        case "ip": return NetHelper.MyIP() + "";
-        //        case "time": return DateTime.Now.ToFullString();
-        //        default:
-        //            throw new ApiException(505, "不支持类型" + kind);
-        //    }
-        //}
-
-        ///// <summary>加密数据</summary>
-        ///// <param name="data"></param>
-        ///// <returns></returns>
-        //public Packet Encrypt(Packet data)
-        //{
-        //    //Log.XTrace.WriteLine("加密数据{0:n0}字节", data.Total);
-
-        //    var buf = Security.RC4.Encrypt(data.ToArray(), "NewLife".GetBytes());
-
-        //    return buf;
-        //}
-#endif
     }
 }

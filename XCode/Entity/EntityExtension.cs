@@ -2,9 +2,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using NewLife;
+using NewLife.Data;
 using NewLife.Reflection;
+using NewLife.Serialization;
 using XCode.Configuration;
 using XCode.DataAccessLayer;
 
@@ -210,7 +213,23 @@ namespace XCode
         /// <param name="list">实体列表</param>
         /// <param name="useTransition">是否使用事务保护</param>
         /// <returns></returns>
-        public static Int32 Update<T>(this IEnumerable<T> list, Boolean? useTransition = null) where T : IEntity => DoAction(list, useTransition, e => e.Update());
+        public static Int32 Update<T>(this IEnumerable<T> list, Boolean? useTransition = null) where T : IEntity
+        {
+            // 避免列表内实体对象为空
+            var entity = list.FirstOrDefault(e => e != null);
+            if (entity == null) return 0;
+
+            if (list.Count() > 1)
+            {
+                var fact = entity.GetType().AsFactory();
+                var db = fact.Session.Dal;
+
+                // Oracle批量更新
+                if (db.DbType == DatabaseType.Oracle) return BatchUpdate(list.Valid());
+            }
+
+            return DoAction(list, useTransition, e => e.Update());
+        }
 
         /// <summary>把整个保存更新到数据库</summary>
         /// <param name="list">实体列表</param>
@@ -222,7 +241,7 @@ namespace XCode
            * Save的几个场景：
            * 1，Find, Update()
            * 2，new, Insert()
-           * 3，new, InsertOrUpdate
+           * 3，new, Upsert()
            */
 
             // 避免列表内实体对象为空
@@ -241,13 +260,7 @@ namespace XCode
                     // 根据是否来自数据库，拆分为两组
                     var ts = Split(list);
                     list = ts.Item1;
-                    var es = ts.Item2;
-                    foreach (IEntity item in es.ToArray())
-                    {
-                        if (item is EntityBase entity2) entity2.Valid(item.IsNullKey);
-                        if (!fact.Modules.Valid(item, item.IsNullKey)) es.Remove((T)item);
-                    }
-                    rs += BatchSave(fact, es);
+                    rs += BatchSave(fact, ts.Item2.Valid());
                 }
             }
 
@@ -304,21 +317,35 @@ namespace XCode
             var rs = 0;
             if (!fact.Table.DataTable.Indexes.Any(di => di.Unique))
             {
-                var adds = new List<T>();
-                var others = new List<T>();
+                var inserts = new List<T>();
+                var updates = new List<T>();
+                var upserts = new List<T>();
                 foreach (var item in list)
                 {
-                    if (item.IsNullKey)
-                        adds.Add(item);
+                    // 来自数据库，更新
+                    if (item.IsFromDatabase)
+                        updates.Add(item);
+                    // 空主键，插入
+                    else if (item.IsNullKey)
+                        inserts.Add(item);
+                    // 其它 Upsert
                     else
-                        others.Add(item);
+                        upserts.Add(item);
                 }
-                list = others;
+                list = upserts;
 
-                if (adds.Count > 0) rs += BatchInsert(adds);
+                if (inserts.Count > 0) rs += BatchInsert(inserts);
+                if (updates.Count > 0)
+                {
+                    // 只有Oracle支持批量Update
+                    if (fact.Session.Dal.DbType == DatabaseType.Oracle)
+                        rs += BatchUpdate(updates);
+                    else
+                        upserts.AddRange(upserts);
+                }
             }
 
-            if (list.Any()) rs += InsertOrUpdate(list);
+            if (list.Any()) rs += Upsert(list);
 
             return rs;
         }
@@ -370,6 +397,30 @@ namespace XCode
             }
             return count;
         }
+
+        /// <summary>批量验证对象</summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="list"></param>
+        /// <returns></returns>
+        public static IList<T> Valid<T>(this IEnumerable<T> list) where T : IEntity
+        {
+            var rs = new List<T>();
+
+            var entity = list.FirstOrDefault(e => e != null);
+            if (entity == null) return rs;
+
+            var fact = entity.GetType().AsFactory();
+            var modules = fact.Modules;
+
+            // 验证对象
+            foreach (IEntity item in list)
+            {
+                if (item is EntityBase entity2) entity2.Valid(item.IsNullKey);
+                if (modules.Valid(item, item.IsNullKey)) rs.Add((T)item);
+            }
+
+            return rs;
+        }
         #endregion
 
         #region 批量更新
@@ -384,7 +435,17 @@ namespace XCode
 
             var entity = list.First();
             var fact = entity.GetType().AsFactory();
-            if (columns == null) columns = fact.Fields.Select(e => e.Field).ToArray();
+            if (columns == null)
+            {
+                columns = fact.Fields.Select(e => e.Field).ToArray();
+
+                // 第一列数据包含非零自增，表示要插入自增值
+                var id = columns.FirstOrDefault(e => e.Identity);
+                if (id != null)
+                {
+                    if (entity[id.Name].ToLong() == 0) columns = columns.Where(e => !e.Identity).ToArray();
+                }
+            }
 
             var session = fact.Session;
             session.InitData();
@@ -393,12 +454,12 @@ namespace XCode
             return session.Dal.Session.Insert(session.TableName, columns, list.Cast<IIndexAccessor>());
         }
 
-        /// <summary>
-        /// 批量更新
+        /// <summary>批量更新</summary>
+        /// <remarks>
         /// 注意类似：XCode.Exceptions.XSqlException: ORA-00933: SQL 命令未正确结束
         /// [SQL:Update tablen_Name Set FieldName=:FieldName W [:FieldName=System.Int32[]]][DB:AAA/Oracle]
         /// 建议是优先检查表是否存在主键，如果由于没有主键导致，及时通过try...cache 依旧无法正常保存。
-        /// </summary>
+        /// </remarks>
         /// <typeparam name="T">实体类型</typeparam>
         /// <param name="list">实体列表</param>
         /// <param name="columns">要更新的字段，默认所有字段</param>
@@ -411,7 +472,7 @@ namespace XCode
 
             var entity = list.First();
             var fact = entity.GetType().AsFactory();
-            if (columns == null) columns = fact.Fields.Select(e => e.Field).ToArray();
+            if (columns == null) columns = fact.Fields.Select(e => e.Field).Where(e => !e.Identity).ToArray();
             //if (updateColumns == null) updateColumns = entity.Dirtys.Keys;
             if (updateColumns == null)
             {
@@ -427,15 +488,17 @@ namespace XCode
                         if (!hs.Contains(elm)) hs.Add(elm);
                     }
                 }
-                updateColumns = hs;
+                if (hs.Count > 0) updateColumns = hs;
             }
             if (addColumns == null) addColumns = fact.AdditionalFields;
+
+            if ((updateColumns == null || updateColumns.Count < 1) && (addColumns == null || addColumns.Count < 1)) return 0;
 
             var session = fact.Session;
             session.InitData();
             session.Dal.CheckDatabase();
 
-            return fact.Session.Dal.Session.Update(session.TableName, columns, updateColumns, addColumns, list.Cast<IIndexAccessor>());
+            return session.Dal.Session.Update(session.TableName, columns, updateColumns, addColumns, list.Cast<IIndexAccessor>());
         }
 
         /// <summary>批量插入或更新</summary>
@@ -445,13 +508,13 @@ namespace XCode
         /// <param name="updateColumns">要更新的字段，默认脏数据</param>
         /// <param name="addColumns">要累加更新的字段，默认累加</param>
         /// <returns></returns>
-        public static Int32 InsertOrUpdate<T>(this IEnumerable<T> list, IDataColumn[] columns = null, ICollection<String> updateColumns = null, ICollection<String> addColumns = null) where T : IEntity
+        public static Int32 Upsert<T>(this IEnumerable<T> list, IDataColumn[] columns = null, ICollection<String> updateColumns = null, ICollection<String> addColumns = null) where T : IEntity
         {
             if (list == null || !list.Any()) return 0;
 
             var entity = list.First();
             var fact = entity.GetType().AsFactory();
-            if (columns == null) columns = fact.Fields.Select(e => e.Field).ToArray();
+            if (columns == null) columns = fact.Fields.Select(e => e.Field).Where(e => !e.Identity).ToArray();
             //if (updateColumns == null) updateColumns = entity.Dirtys.Keys;
             if (updateColumns == null)
             {
@@ -467,15 +530,30 @@ namespace XCode
                         if (!hs.Contains(elm)) hs.Add(elm);
                     }
                 }
-                updateColumns = hs;
+                if (hs.Count > 0) updateColumns = hs;
             }
             if (addColumns == null) addColumns = fact.AdditionalFields;
+            // 没有任何数据变更则直接返回0
+            if ((updateColumns == null || updateColumns.Count <= 0) && (addColumns == null || addColumns.Count <= 0)) return 0;
 
             var session = fact.Session;
             session.InitData();
             session.Dal.CheckDatabase();
 
-            return session.Dal.Session.InsertOrUpdate(session.TableName, columns, updateColumns, addColumns, list.Cast<IIndexAccessor>());
+            return session.Dal.Session.Upsert(session.TableName, columns, updateColumns, addColumns, list.Cast<IIndexAccessor>());
+        }
+
+        /// <summary>批量插入或更新</summary>
+        /// <typeparam name="T">实体类型</typeparam>
+        /// <param name="list">实体列表</param>
+        /// <param name="columns">要插入的字段，默认所有字段</param>
+        /// <param name="updateColumns">要更新的字段，默认脏数据</param>
+        /// <param name="addColumns">要累加更新的字段，默认累加</param>
+        /// <returns></returns>
+        [Obsolete("请改用list.Upsert()")]
+        public static Int32 InsertOrUpdate<T>(this IEnumerable<T> list, IDataColumn[] columns = null, ICollection<String> updateColumns = null, ICollection<String> addColumns = null) where T : IEntity
+        {
+            return Upsert(list, columns, updateColumns, addColumns);
         }
 
         /// <summary>批量插入或更新</summary>
@@ -484,10 +562,10 @@ namespace XCode
         /// <param name="updateColumns">主键已存在时，要更新的字段</param>
         /// <param name="addColumns">主键已存在时，要累加更新的字段</param>
         /// <returns></returns>
-        public static Int32 InsertOrUpdate(this IEntity entity, IDataColumn[] columns = null, ICollection<String> updateColumns = null, ICollection<String> addColumns = null)
+        public static Int32 Upsert(this IEntity entity, IDataColumn[] columns = null, ICollection<String> updateColumns = null, ICollection<String> addColumns = null)
         {
             var fact = entity.GetType().AsFactory();
-            if (columns == null) columns = fact.Fields.Select(e => e.Field).ToArray();
+            if (columns == null) columns = fact.Fields.Select(e => e.Field).Where(e => !e.Identity).ToArray();
             if (updateColumns == null) updateColumns = entity.Dirtys.Where(e => !e.StartsWithIgnoreCase("Create")).Distinct().ToArray();
             if (addColumns == null) addColumns = fact.AdditionalFields;
 
@@ -495,7 +573,150 @@ namespace XCode
             session.InitData();
             session.Dal.CheckDatabase();
 
-            return fact.Session.Dal.Session.InsertOrUpdate(session.TableName, columns, updateColumns, addColumns, new[] { entity as IIndexAccessor });
+            return fact.Session.Dal.Session.Upsert(session.TableName, columns, updateColumns, addColumns, new[] { entity as IIndexAccessor });
+        }
+        #endregion
+
+        #region 读写数据流
+        /// <summary>转为DbTable</summary>
+        /// <param name="list">实体列表</param>
+        /// <returns></returns>
+        public static DbTable ToTable<T>(this IEnumerable<T> list) where T : IEntity
+        {
+            var entity = list.FirstOrDefault();
+            if (entity == null) return null;
+
+            var fact = entity.GetType().AsFactory();
+            var fs = fact.Fields;
+
+            var count = fs.Length;
+            var dt = new DbTable
+            {
+                Columns = new String[count],
+                Types = new Type[count],
+                Rows = new List<Object[]>(),
+            };
+            for (var i = 0; i < fs.Length; i++)
+            {
+                var fi = fs[i];
+                dt.Columns[i] = fi.Name;
+                dt.Types[i] = fi.Type;
+            }
+
+            foreach (var item in list)
+            {
+                var dr = new Object[count];
+                for (var i = 0; i < fs.Length; i++)
+                {
+                    var fi = fs[i];
+                    dr[i] = item[fi.Name];
+                }
+                dt.Rows.Add(dr);
+            }
+
+            return dt;
+        }
+
+        /// <summary>写入数据流</summary>
+        /// <param name="list">实体列表</param>
+        /// <param name="stream">数据流</param>
+        /// <returns></returns>
+        public static Int64 Write<T>(this IEnumerable<T> list, Stream stream) where T : IEntity
+        {
+            if (list == null) return 0;
+
+            var p = stream.Position;
+            foreach (var item in list)
+            {
+                (item as IAccessor).Write(stream, null);
+            }
+
+            return stream.Position - p;
+        }
+
+        /// <summary>写入数据流</summary>
+        /// <param name="list">实体列表</param>
+        /// <param name="file">文件</param>
+        /// <returns></returns>
+        public static Int64 SaveFile<T>(this IEnumerable<T> list, String file) where T : IEntity
+        {
+            if (list == null) return 0;
+
+            // 确保创建目录
+            file.EnsureDirectory(true);
+
+            using (var fs = new FileStream(file, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
+            {
+                foreach (var item in list)
+                {
+                    (item as IAccessor).Write(fs, null);
+                }
+
+                return fs.Position;
+            }
+        }
+
+        /// <summary>从数据流读取列表</summary>
+        /// <param name="list">实体列表</param>
+        /// <param name="stream">数据流</param>
+        /// <returns>实体列表</returns>
+        public static IList<T> Read<T>(this IList<T> list, Stream stream) where T : IEntity
+        {
+            if (stream == null) return list;
+
+            var fact = typeof(T).AsFactory();
+            while (stream.Position < stream.Length)
+            {
+                var entity = (T)fact.Create();
+                (entity as IAccessor).Read(stream, null);
+
+                list.Add(entity);
+            }
+
+            return list;
+        }
+
+        /// <summary>从数据流读取列表</summary>
+        /// <param name="list">实体列表</param>
+        /// <param name="stream">数据流</param>
+        /// <returns>实体列表</returns>
+        public static IEnumerable<T> ReadEnumerable<T>(this IList<T> list, Stream stream) where T : IEntity
+        {
+            if (stream == null) yield break;
+
+            var fact = typeof(T).AsFactory();
+            while (stream.Position < stream.Length)
+            {
+                var entity = (T)fact.Create();
+                (entity as IAccessor).Read(stream, null);
+
+                list.Add(entity);
+
+                yield return entity;
+            }
+        }
+
+        /// <summary>从数据流读取列表</summary>
+        /// <param name="list">实体列表</param>
+        /// <param name="file">文件</param>
+        /// <returns>实体列表</returns>
+        public static IList<T> LoadFile<T>(this IList<T> list, String file) where T : IEntity
+        {
+            if (file.IsNullOrEmpty() || !File.Exists(file)) return list;
+
+            var fact = typeof(T).AsFactory();
+            using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                while (fs.Position < fs.Length)
+                {
+                    var entity = (T)fact.Create();
+                    (entity as IAccessor).Read(fs, null);
+
+                    list.Add(entity);
+                }
+            }
+
+            return list;
         }
         #endregion
 

@@ -176,21 +176,7 @@ namespace XCode.DataAccessLayer
         /// <param name="addColumns">主键已存在时，要累加更新的字段</param>
         /// <param name="list">实体列表</param>
         /// <returns></returns>
-        Int32 InsertOrUpdate(String tableName, IDataColumn[] columns, ICollection<String> updateColumns, ICollection<String> addColumns, IEnumerable<IIndexAccessor> list);
-        #endregion
-
-        #region 异步操作
-#if !NET4
-        ///// <summary>异步打开</summary>
-        ///// <returns></returns>
-        //Task OpenAsync();
-
-        /// <summary>执行SQL查询，返回记录集</summary>
-        /// <param name="sql">SQL语句</param>
-        /// <param name="ps">命令参数</param>
-        /// <returns></returns>
-        Task<DbTable> QueryAsync(String sql, params IDataParameter[] ps);
-#endif
+        Int32 Upsert(String tableName, IDataColumn[] columns, ICollection<String> updateColumns, ICollection<String> addColumns, IEnumerable<IIndexAccessor> list);
         #endregion
 
         #region 高级

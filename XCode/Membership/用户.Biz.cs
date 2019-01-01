@@ -7,6 +7,7 @@ using System.Security.Principal;
 using System.Web;
 using System.Web.Script.Serialization;
 using System.Xml.Serialization;
+using NewLife.Data;
 using NewLife.Log;
 using NewLife.Model;
 using NewLife.Web;
@@ -123,71 +124,6 @@ namespace XCode.Membership
         #endregion
 
         #region 扩展属性
-        /// <summary>当前登录用户</summary>
-        [Obsolete]
-        public static TEntity Current
-        {
-            get
-            {
-#if !__CORE__
-                var key = "Admin";
-                var ss = HttpContext.Current?.Session;
-                if (ss == null) return null;
-                var ms = HttpContext.Current.Items;
-
-                // 从Session中获取
-                return ss[key] as TEntity;
-                //if (ss[key] is TEntity entity) return entity;
-
-                //// 设置一个陷阱，避免重复计算Cookie
-                //if (ms[key] != null) return null;
-
-                //// 从Cookie中获取
-                //entity = GetCookie(key);
-                //if (entity != null)
-                //    ss[key] = entity;
-                //else
-                //    ms[key] = "1";
-
-                //return entity;
-#else
-                return null;
-#endif
-            }
-            set
-            {
-#if !__CORE__
-                var key = "Admin";
-                var ss = HttpContext.Current?.Session;
-                if (ss == null) return;
-
-                // 特殊处理注销
-                if (value == null)
-                {
-                    if (ss[key] is TEntity entity) WriteLog("注销", entity.Name);
-
-                    // 修改Session
-                    ss.Remove(key);
-                }
-                else
-                {
-                    // 修改Session
-                    ss[key] = value;
-                }
-
-                //// 修改Cookie
-                //SetCookie(key, value);
-#else
-                // 特殊处理注销
-                if (value == null)
-                {
-                    var entity = Current;
-                    if (entity != null) WriteLog("注销", entity.Name);
-                }
-#endif
-            }
-        }
-
         /// <summary>友好名字</summary>
         [XmlIgnore, ScriptIgnore]
         public virtual String FriendName => String.IsNullOrEmpty(DisplayName) ? Name : DisplayName;
@@ -197,6 +133,14 @@ namespace XCode.Membership
         //[BindRelation(__.LastLoginIP)]
         [XmlIgnore, ScriptIgnore]
         public String LastLoginAddress => LastLoginIP.IPToAddress();
+
+        /// <summary>部门</summary>
+        [XmlIgnore, ScriptIgnore]
+        public Department Department => Extends.Get(nameof(Department), k => Department.FindByID(DepartmentID));
+
+        /// <summary>部门</summary>
+        [Map(__.DepartmentID, typeof(Department), __.ID)]
+        public String DepartmentName => Department + "";
         #endregion
 
         #region 扩展查询
@@ -273,7 +217,7 @@ namespace XCode.Membership
         /// <param name="isEnable"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        public static IList<TEntity> Search(String key, Int32 roleId, Boolean? isEnable, Pager p) => Search(key, roleId, isEnable, DateTime.MinValue, DateTime.MinValue, p);
+        public static IList<TEntity> Search(String key, Int32 roleId, Boolean? isEnable, PageParameter p) => Search(key, roleId, isEnable, DateTime.MinValue, DateTime.MinValue, p);
 
         /// <summary>高级查询</summary>
         /// <param name="key"></param>
@@ -283,7 +227,7 @@ namespace XCode.Membership
         /// <param name="end"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        public static IList<TEntity> Search(String key, Int32 roleId, Boolean? isEnable, DateTime start, DateTime end, Pager p)
+        public static IList<TEntity> Search(String key, Int32 roleId, Boolean? isEnable, DateTime start, DateTime end, PageParameter p)
         {
             var exp = _.LastLogin.Between(start, end);
             if (roleId > 0) exp &= _.RoleID == roleId | _.RoleIDs.Contains("," + roleId + ",");
@@ -348,15 +292,7 @@ namespace XCode.Membership
 
             try
             {
-                var user = Login(username, password, 1);
-#if !__CORE__
-                //if (rememberme && user != null)
-                //{
-                //    var cookie = HttpContext.Current.Response.Cookies["Admin"];
-                //    if (cookie != null) cookie.Expires = DateTime.Now.Date.AddYears(1);
-                //}
-#endif
-                return user;
+                return Login(username, password, 1);
             }
             catch (Exception ex)
             {
@@ -438,8 +374,8 @@ namespace XCode.Membership
         {
             Logins++;
             LastLogin = DateTime.Now;
-            var ip = WebHelper.UserHost;
-            if (!String.IsNullOrEmpty(ip)) LastLoginIP = ip;
+            var ip = ManageProvider.UserHost;
+            if (!ip.IsNullOrEmpty()) LastLoginIP = ip;
 
             Online = true;
 
@@ -478,7 +414,7 @@ namespace XCode.Membership
                 }
 
                 RegisterTime = DateTime.Now;
-                RegisterIP = WebHelper.UserHost;
+                RegisterIP = ManageProvider.UserHost;
 
                 Insert();
 
@@ -500,66 +436,6 @@ namespace XCode.Membership
 
             return true;
         }
-
-#if !__CORE__
-        //static Boolean _isInGetCookie;
-        //static TEntity GetCookie(String key)
-        //{
-        //    if (_isInGetCookie) return null;
-
-        //    var cookie = HttpContext.Current.Request.Cookies[key];
-        //    if (cookie == null) return null;
-
-        //    var user = HttpUtility.UrlDecode(cookie["u"]);
-        //    var pass = cookie["p"];
-        //    if (String.IsNullOrEmpty(user) || String.IsNullOrEmpty(pass)) return null;
-
-        //    _isInGetCookie = true;
-        //    try
-        //    {
-        //        return Login(user, pass, -1);
-        //    }
-        //    catch (DbException ex)
-        //    {
-        //        XTrace.WriteLine("{0}登录失败！{1}", user, ex);
-        //        return null;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        WriteLog("登录", user + "登录失败！" + ex.Message);
-        //        return null;
-        //    }
-        //    finally { _isInGetCookie = false; }
-        //}
-
-        //static void SetCookie(String key, TEntity entity)
-        //{
-        //    var context = HttpContext.Current;
-        //    var res = context?.Response;
-        //    if (res == null) return;
-
-        //    var reqcookie = context.Request.Cookies[key];
-        //    if (entity != null)
-        //    {
-        //        var user = HttpUtility.UrlEncode(entity.Name);
-        //        var pass = !String.IsNullOrEmpty(entity.Password) ? entity.Password.MD5() : null;
-        //        if (reqcookie == null || user != reqcookie["u"] || pass != reqcookie["p"])
-        //        {
-        //            // 只有需要写入Cookie时才设置，否则会清空原来的非会话Cookie
-        //            var cookie = res.Cookies[key];
-        //            cookie["u"] = user;
-        //            cookie["p"] = pass;
-        //        }
-        //    }
-        //    else
-        //    {
-        //        var cookie = res.Cookies[key];
-        //        cookie.Value = null;
-        //        cookie.Expires = DateTime.Now.AddYears(-1);
-        //        //HttpContext.Current.Response.Cookies.Remove(key);
-        //    }
-        //}
-#endif
         #endregion
 
         #region 权限

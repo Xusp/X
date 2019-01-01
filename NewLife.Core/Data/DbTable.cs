@@ -70,8 +70,10 @@ namespace NewLife.Data
 
         /// <summary>从数据流读取</summary>
         /// <param name="stream"></param>
-        public void Read(Stream stream)
+        public Int64 Read(Stream stream)
         {
+            var p = stream.Position;
+
             var bn = new Binary
             {
                 EncodeInt = true,
@@ -83,6 +85,8 @@ namespace NewLife.Data
 
             // 读取全部数据
             ReadData(bn, Total);
+
+            return stream.Position - p;
         }
 
         /// <summary>读取头部</summary>
@@ -124,10 +128,11 @@ namespace NewLife.Data
             var count = ts.Length;
 
             var total = 0;
+            var length = bn.Stream.Length;
             var rs = new List<Object[]>(rows);
             for (var k = 0; k < rows; k++)
             {
-                if (bn.Stream.Position >= bn.Stream.Length) break;
+                if (bn.Stream.Position >= length) break;
 
                 var row = new Object[count];
                 for (var i = 0; i < count; i++)
@@ -153,13 +158,20 @@ namespace NewLife.Data
 
             return true;
         }
+
+        /// <summary>从文件加载</summary>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        public Int64 LoadFile(String file) => file.AsFile().OpenRead(s => Read(s));
         #endregion
 
         #region 二进制写入
         /// <summary>写入数据流</summary>
         /// <param name="stream"></param>
-        public void Write(Stream stream)
+        public Int64 Write(Stream stream)
         {
+            var p = stream.Position;
+
             var bn = new Binary
             {
                 EncodeInt = true,
@@ -175,6 +187,8 @@ namespace NewLife.Data
 
             // 写入数据行
             WriteData(bn);
+
+            return stream.Position - p;
         }
 
         /// <summary>写入头部到数据流</summary>
@@ -233,6 +247,11 @@ namespace NewLife.Data
             ms.Position = 8;
             return new Packet(ms);
         }
+
+        /// <summary>保存到文件</summary>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        public Int64 SaveFile(String file) => file.AsFile().OpenWrite(s => Write(s));
         #endregion
 
         #region 获取

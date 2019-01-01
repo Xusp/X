@@ -121,7 +121,7 @@ namespace NewLife.Serialization
                 type = value.GetType();
 
                 // 一般类型为空是顶级调用
-                if (Hosts.Count == 0) WriteLog("BinaryWrite {0} {1}", type.Name, value);
+                if (Hosts.Count == 0 && Log != null && Log.Enable) WriteLog("BinaryWrite {0} {1}", type.Name, value);
             }
 
             // 优先 IAccessor 接口
@@ -185,6 +185,8 @@ namespace NewLife.Serialization
             return -1;
         }
 
+        [ThreadStatic]
+        private static Byte[] _encodes;
         /// <summary>写7位压缩编码整数</summary>
         /// <remarks>
         /// 以7位压缩格式写入32位整数，小于7位用1个字节，小于14位用2个字节。
@@ -194,21 +196,18 @@ namespace NewLife.Serialization
         /// <returns>实际写入字节数</returns>
         Int32 WriteEncoded(Int32 value)
         {
-            var arr = new Byte[16];
-            var k = 0;
+            if (_encodes == null) _encodes = new Byte[16];
 
-            var count = 1;
+            var count = 0;
             var num = (UInt32)value;
             while (num >= 0x80)
             {
-                arr[k++] = (Byte)(num | 0x80);
+                _encodes[count++] = (Byte)(num | 0x80);
                 num = num >> 7;
-
-                count++;
             }
-            arr[k++] = (Byte)num;
+            _encodes[count++] = (Byte)num;
 
-            Write(arr, 0, k);
+            Write(_encodes, 0, count);
 
             return count;
         }
@@ -241,7 +240,7 @@ namespace NewLife.Serialization
         //[DebuggerHidden]
         public virtual Boolean TryRead(Type type, ref Object value)
         {
-            if (Hosts.Count == 0) WriteLog("BinaryRead {0} {1}", type.Name, value);
+            if (Hosts.Count == 0 && Log != null && Log.Enable) WriteLog("BinaryRead {0} {1}", type.Name, value);
 
             // 优先 IAccessor 接口
             if (value is IAccessor acc)
@@ -412,7 +411,6 @@ namespace NewLife.Serialization
         #endregion
 
         #region 跟踪日志
-#if !__MOBILE__
         /// <summary>使用跟踪流。实际上是重新包装一次Stream，必须在设置Stream后，使用之前</summary>
         public virtual void EnableTrace()
         {
@@ -421,7 +419,6 @@ namespace NewLife.Serialization
 
             Stream = new TraceStream(stream) { Encoding = Encoding, IsLittleEndian = IsLittleEndian };
         }
-#endif
         #endregion
 
         #region 快捷方法

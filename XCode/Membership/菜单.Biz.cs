@@ -41,6 +41,8 @@ namespace XCode.Membership
 
             base.Valid(isNew);
 
+            if (Icon == "&#xe63f;") Icon = null;
+
             SavePermission();
         }
 
@@ -50,7 +52,9 @@ namespace XCode.Membership
         {
             // 先处理一次，否则可能因为别的字段没有修改而没有脏数据
             SavePermission();
-            if (Icon.IsNullOrWhiteSpace()) Icon = "&#xe63f;";
+
+            //if (Icon.IsNullOrWhiteSpace()) Icon = "&#xe63f;";
+
             // 更改日志保存顺序，先保存才能获取到id
             var action = "添加";
             var isNew = IsNullKey;
@@ -327,44 +331,6 @@ namespace XCode.Membership
             #region IMenuFactory 成员
             IMenu IMenuFactory.Root => Root;
 
-            /// <summary>当前请求所在菜单。自动根据当前请求的文件路径定位</summary>
-            IMenu IMenuFactory.Current
-            {
-#if !__CORE__
-                get
-                {
-                    var context = HttpContext.Current;
-                    if (context == null) return null;
-
-                    var menu = context.Items["CurrentMenu"] as IMenu;
-                    if (menu == null && !context.Items.Contains("CurrentMenu"))
-                    {
-                        var ss = context.Request.AppRelativeCurrentExecutionFilePath.Split("/");
-                        // 默认路由包括区域、控制器、动作，Url有时候会省略动作，再往后的就是参数了，动作和参数不参与菜单匹配
-                        var max = ss.Length - 1;
-                        if (ss[0] == "~") max++;
-
-                        // 寻找当前所属菜单，路径倒序，从最长Url路径查起
-                        for (var i = max; i > 0 && menu == null; i--)
-                        {
-                            var url = ss.Take(i).Join("/");
-                            menu = FindByUrl(url);
-                        }
-
-                        context.Items["CurrentMenu"] = menu;
-                    }
-                    return menu;
-                }
-                set
-                {
-                    HttpContext.Current.Items["CurrentMenu"] = value;
-                }
-#else
-                get { return null; }
-                set { }
-#endif
-            }
-
             /// <summary>根据编号找到菜单</summary>
             /// <param name="id"></param>
             /// <returns></returns>
@@ -527,9 +493,6 @@ namespace XCode.Membership
     {
         /// <summary>根菜单</summary>
         IMenu Root { get; }
-
-        /// <summary>当前请求所在菜单。自动根据当前请求的文件路径定位</summary>
-        IMenu Current { get; set; }
 
         /// <summary>根据编号找到菜单</summary>
         /// <param name="id"></param>

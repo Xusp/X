@@ -27,31 +27,20 @@ namespace XCode.DataAccessLayer
         #region 构造函数
         static DbBase()
         {
-#if !__CORE__
-            var root = Runtime.IsWeb ? System.Web.HttpRuntime.BinDirectory : AppDomain.CurrentDomain.BaseDirectory;
-#else
             var root = AppDomain.CurrentDomain.BaseDirectory;
-#endif
+            if (Runtime.IsWeb) root = root.CombinePath("bin");
 
             // 根据进程版本，设定x86或者x64为DLL目录
             var dir = Environment.Is64BitProcess ? "x64" : "x86";
             dir = root.CombinePath(dir);
             //if (Directory.Exists(dir)) SetDllDirectory(dir);
             // 不要判断是否存在，因为可能目录还不存在，一会下载驱动后将创建目录
-#if __CORE__
-            if (!Runtime.Mono && !Runtime.Linux) SetDllDirectory(dir);
-#else
-            if (!Runtime.Mono) SetDllDirectory(dir);
-#endif
+            if (Runtime.Windows) SetDllDirectory(dir);
 
             root = NewLife.Setting.Current.GetPluginPath();
             dir = Environment.Is64BitProcess ? "x64" : "x86";
             dir = root.CombinePath(dir);
-#if __CORE__
-            if (!Runtime.Mono && !Runtime.Linux) SetDllDirectory(dir);
-#else
-            if (!Runtime.Mono) SetDllDirectory(dir);
-#endif
+            if (Runtime.Windows) SetDllDirectory(dir);
         }
 
         /// <summary>销毁资源时，回滚未提交事务，并关闭数据库连接</summary>
@@ -334,7 +323,7 @@ namespace XCode.DataAccessLayer
                         links.Add(name + ".win");
                     }
 
-                    linkName = name + ".netstandard";
+                    linkName = name + ".st";
 #else
                     if (Environment.Is64BitProcess) linkName += "64";
                     var ver = Environment.Version;
@@ -342,14 +331,7 @@ namespace XCode.DataAccessLayer
 #endif
                     links.Add(linkName);
                     // 有些数据库驱动不区分x86/x64，并且逐步以Fx4为主，所以来一个默认
-                    //linkName += ";" + name;
                     if (!links.Contains(name)) links.Add(name);
-
-#if __CORE__
-                    //linkName = "st_" + name;
-                    // 指定完全类型名可获取项目中添加了引用的类型，否则dll文件需要放在根目录
-                    className = className + "," + name;
-#endif
                 }
 
                 var type = PluginHelper.LoadPlugin(className, null, assemblyFile, links.Join(","));
@@ -713,11 +695,7 @@ namespace XCode.DataAccessLayer
             else if (value != null)
                 type = value.GetType();
 
-            // 枚举
-            if (type.IsEnum) type = typeof(Int32);
-
-            var code = System.Type.GetTypeCode(type);
-            if (code == TypeCode.String)
+            if (type == typeof(String))
             {
                 if (value == null) return isNullable ? "null" : "''";
                 //!!! 为SQL格式化数值时，如果字符串是Empty，将不再格式化为null
@@ -725,18 +703,18 @@ namespace XCode.DataAccessLayer
 
                 return "'" + value.ToString().Replace("'", "''") + "'";
             }
-            else if (code == TypeCode.DateTime)
+            else if (type == typeof(DateTime))
             {
                 if (value == null) return isNullable ? "null" : "''";
                 var dt = Convert.ToDateTime(value);
 
                 //if (dt <= DateTime.MinValue || dt >= DateTime.MaxValue) return isNullable ? "null" : "''";
 
-                //if (isNullable && (dt <= DateTime.MinValue || dt >= DateTime.MaxValue)) return "null";
+                if (isNullable && (dt <= DateTime.MinValue || dt >= DateTime.MaxValue)) return "null";
 
                 return FormatDateTime(dt);
             }
-            else if (code == TypeCode.Boolean)
+            else if (type == typeof(Boolean))
             {
                 if (value == null) return isNullable ? "null" : "";
                 return Convert.ToBoolean(value) ? "1" : "0";
@@ -754,16 +732,17 @@ namespace XCode.DataAccessLayer
 
                 return String.Format("'{0}'", value);
             }
-            else
-            {
-                if (value == null) return isNullable ? "null" : "";
 
-                // 转为目标类型，比如枚举转为数字
-                value = value.ChangeType(type);
-                if (value == null) return isNullable ? "null" : "";
+            if (value == null) return isNullable ? "null" : "";
 
-                return value.ToString();
-            }
+            // 枚举
+            if (!type.IsInt() && type.IsEnum) type = typeof(Int32);
+
+            // 转为目标类型，比如枚举转为数字
+            value = value.ChangeType(type);
+            if (value == null) return isNullable ? "null" : "";
+
+            return value.ToString();
         }
 
         ///// <summary>格式化标识列，返回插入数据时所用的表达式，如果字段本身支持自增，则返回空</summary>

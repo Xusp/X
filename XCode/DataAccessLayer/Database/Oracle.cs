@@ -28,12 +28,8 @@ namespace XCode.DataAccessLayer
                 {
                     lock (typeof(Oracle))
                     {
-#if __CORE__
                         //_Factory = GetProviderFactory("System.Data.OracleClient.dll", "System.Data.OracleClient.OracleClientFactory");
                         _Factory = GetProviderFactory("Oracle.ManagedDataAccess.dll", "Oracle.ManagedDataAccess.Client.OracleClientFactory");
-#else
-                        _Factory = GetProviderFactory("Oracle.ManagedDataAccess.dll", "Oracle.ManagedDataAccess.Client.OracleClientFactory");
-#endif
                     }
                 }
 
@@ -452,7 +448,7 @@ namespace XCode.DataAccessLayer
             sb.AppendFormat("Insert Into {0}(", db.FormatTableName(tableName));
             foreach (var dc in columns)
             {
-                if (dc.Identity) continue;
+                //if (dc.Identity) continue;
 
                 sb.Append(db.FormatName(dc.ColumnName));
                 sb.Append(",");
@@ -464,7 +460,7 @@ namespace XCode.DataAccessLayer
             sb.Append(" Values(");
             foreach (var dc in columns)
             {
-                if (dc.Identity) continue;
+                //if (dc.Identity) continue;
 
                 sb.Append(db.FormatParameterName(dc.Name));
                 sb.Append(",");
@@ -483,11 +479,13 @@ namespace XCode.DataAccessLayer
             var dps = new List<IDataParameter>();
             foreach (var dc in columns)
             {
-                if (dc.Identity) continue;
+                //if (dc.Identity) continue;
                 if (!ps.Contains(dc.Name)) continue;
 
                 //var vs = new List<Object>();
-                var arr = Array.CreateInstance(dc.DataType, list.Count());
+                var type = dc.DataType;
+                if (!type.IsInt() && type.IsEnum) type = typeof(Int32);
+                var arr = Array.CreateInstance(type, list.Count());
                 var k = 0;
                 foreach (var entity in list)
                 {
@@ -502,7 +500,7 @@ namespace XCode.DataAccessLayer
             return dps.ToArray();
         }
 
-        public override Int32 InsertOrUpdate(String tableName, IDataColumn[] columns, ICollection<String> updateColumns, ICollection<String> addColumns, IEnumerable<IIndexAccessor> list)
+        public override Int32 Upsert(String tableName, IDataColumn[] columns, ICollection<String> updateColumns, ICollection<String> addColumns, IEnumerable<IIndexAccessor> list)
         {
             var ps = new HashSet<String>();
             var insert = GetInsertSql(tableName, columns, ps);

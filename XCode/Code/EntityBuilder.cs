@@ -645,10 +645,10 @@ namespace XCode.Code
                 if (dc != null) WriteLine("//if (!Dirtys[{0}]) {0} = DateTime.Now;", NameOf(dc.Name));
 
                 dc = Table.Columns.FirstOrDefault(e => e.Name.EqualIgnoreCase("CreateIP"));
-                if (dc != null) WriteLine("//if (isNew && !Dirtys[{0}]) {0} = WebHelper.UserHost;", NameOf(dc.Name));
+                if (dc != null) WriteLine("//if (isNew && !Dirtys[{0}]) {0} = ManageProvider.UserHost;", NameOf(dc.Name));
 
                 dc = Table.Columns.FirstOrDefault(e => e.Name.EqualIgnoreCase("UpdateIP"));
-                if (dc != null) WriteLine("//if (!Dirtys[{0}]) {0} = WebHelper.UserHost;", NameOf(dc.Name));
+                if (dc != null) WriteLine("//if (!Dirtys[{0}]) {0} = ManageProvider.UserHost;", NameOf(dc.Name));
 
                 // 唯一索引检查唯一性
                 var dis = Table.Indexes.Where(e => e.Unique).ToArray();
@@ -813,10 +813,10 @@ namespace XCode.Code
 
                     WriteLine();
                     WriteLine("// 单对象缓存");
-                    WriteLine("//return Meta.SingleCache[{0}];", name);
+                    WriteLine("return Meta.SingleCache[{0}];", name);
 
                     WriteLine();
-                    WriteLine("return Find(_.{0} == {1});", pk.Name, name);
+                    WriteLine("//return Find(_.{0} == {1});", pk.Name, name);
                 }
                 WriteLine("}");
             }

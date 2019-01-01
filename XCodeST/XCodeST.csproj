@@ -7,12 +7,12 @@
     <AssemblyTitle>数据中间件</AssemblyTitle>
     <Description>数据中间件，MySQL、SQLite、SqlServer、Oracle</Description>
     <Company>新生命开发团队</Company>
-    <Copyright>©2002-2018 新生命开发团队</Copyright>
-    <FileVersion>9.9.2018.1103</FileVersion>
-    <AssemblyVersion>9.9.*</AssemblyVersion>
+    <Copyright>©2002-2019 新生命开发团队</Copyright>
+    <FileVersion>9.10.2019.0101</FileVersion>
+    <AssemblyVersion>9.10.*</AssemblyVersion>
     <!--是否确定版本，false以支持*-->
     <Deterministic>false</Deterministic>
-    <Version>9.9.2018.1103</Version>
+    <Version>9.10.2019.0101</Version>
     <RepositoryUrl>https://github.com/NewLifeX/X</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
@@ -131,6 +131,8 @@
     <Compile Include="..\XCode\Membership\LogEntity.cs" Link="Membership\LogEntity.cs" />
     <Compile Include="..\XCode\Membership\LogProvider.cs" Link="Membership\LogProvider.cs" />
     <Compile Include="..\XCode\Membership\UserTimeEntity.cs" Link="Membership\UserTimeEntity.cs" />
+    <Compile Include="..\XCode\Membership\字典参数.Biz.cs" Link="Membership\字典参数.Biz.cs" />
+    <Compile Include="..\XCode\Membership\字典参数.cs" Link="Membership\字典参数.cs" />
     <Compile Include="..\XCode\Membership\日志.Biz.cs" Link="Membership\日志.Biz.cs" />
     <Compile Include="..\XCode\Membership\日志.cs" Link="Membership\日志.cs" />
     <Compile Include="..\XCode\Membership\用户.Biz.cs" Link="Membership\用户.Biz.cs" />
@@ -143,6 +145,8 @@
     <Compile Include="..\XCode\Membership\角色.cs" Link="Membership\角色.cs" />
     <Compile Include="..\XCode\Membership\访问统计.Biz.cs" Link="Membership\访问统计.Biz.cs" />
     <Compile Include="..\XCode\Membership\访问统计.cs" Link="Membership\访问统计.cs" />
+    <Compile Include="..\XCode\Membership\部门.Biz.cs" Link="Membership\部门.Biz.cs" />
+    <Compile Include="..\XCode\Membership\部门.cs" Link="Membership\部门.cs" />
     <Compile Include="..\XCode\Model\ConcatExpression.cs" Link="Model\ConcatExpression.cs" />
     <Compile Include="..\XCode\Model\Expression.cs" Link="Model\Expression.cs" />
     <Compile Include="..\XCode\Model\FieldExpression.cs" Link="Model\FieldExpression.cs" />
@@ -163,7 +167,6 @@
     <Compile Include="..\XCode\Statistics\StatLevels.cs" Link="Statistics\StatLevels.cs" />
     <Compile Include="..\XCode\Statistics\StatModel.cs" Link="Statistics\StatModel.cs" />
     <Compile Include="..\XCode\Transform\DataContext.cs" Link="Transform\DataContext.cs" />
-    <Compile Include="..\XCode\Transform\EntityTransform.cs" Link="Transform\EntityTransform.cs" />
     <Compile Include="..\XCode\Transform\ETL.cs" Link="Transform\ETL.cs" />
     <Compile Include="..\XCode\Transform\ExtractSetting.cs" Link="Transform\ExtractSetting.cs" />
     <Compile Include="..\XCode\Transform\IETLModule.cs" Link="Transform\IETLModule.cs" />
@@ -203,9 +206,14 @@
     <Folder Include="Extension\" />
     <Folder Include="Service\" />
     <Folder Include="Statistics\" />
+    <Folder Include="build\" />
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\XCode\build\NewLife.XCode.props" Link="build\NewLife.XCode.props">
+      <Pack>true</Pack>
+      <PackagePath>build\</PackagePath>
+    </None>
     <None Include="..\XCode\Extension\生成实体类.tt" Link="Extension\生成实体类.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
     </None>
@@ -215,10 +223,6 @@
     <None Include="..\XCode\Sharding\生成实体类.tt" Link="Sharding\生成实体类.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.Data.Common" Version="4.3.0" />
   </ItemGroup>
 
   <ItemGroup>

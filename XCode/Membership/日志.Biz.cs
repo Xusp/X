@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Web;
+using NewLife.Data;
 using NewLife.Model;
 using NewLife.Web;
 using XCode.Cache;
@@ -38,15 +39,7 @@ namespace XCode.Membership
             if (isNew)
             {
                 // 自动设置当前登录用户
-                if (!IsDirty(__.UserName))
-                {
-#if !__CORE__
-                    var user = HttpContext.Current?.User?.Identity as IManageUser;
-#else
-                    var user = ManageProvider.Provider?.Current;
-#endif
-                    UserName = user + "";
-                }
+                if (!IsDirty(__.UserName)) UserName = ManageProvider.Provider?.Current + "";
             }
 
             // 处理过长的备注
@@ -91,7 +84,7 @@ namespace XCode.Membership
         /// <param name="end"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        public static IList<TEntity> Search(String key, Int32 userid, String category, DateTime start, DateTime end, Pager p)
+        public static IList<TEntity> Search(String key, Int32 userid, String category, DateTime start, DateTime end, PageParameter p)
         {
             var exp = new WhereExpression();
             //if (!key.IsNullOrEmpty()) exp &= (_.Action == key | _.Remark.Contains(key));
@@ -122,17 +115,11 @@ namespace XCode.Membership
 
         /// <summary>查找所有类别名</summary>
         /// <returns></returns>
-        public static IList<TEntity> FindAllCategory()
-        {
-            return CategoryCache.Entities;
-        }
+        public static IList<TEntity> FindAllCategory() => CategoryCache.Entities;
 
         /// <summary>获取所有类别名称</summary>
         /// <returns></returns>
-        public static IDictionary<String, String> FindAllCategoryName()
-        {
-            return CategoryCache.FindAllName();
-        }
+        public static IDictionary<String, String> FindAllCategoryName() => CategoryCache.FindAllName();
         #endregion
 
         #region 业务
@@ -183,10 +170,7 @@ namespace XCode.Membership
 
         /// <summary>已重载。</summary>
         /// <returns></returns>
-        public override String ToString()
-        {
-            return String.Format("{0} {1} {2} {3:yyyy-MM-dd HH:mm:ss} {4}", Category, Action, UserName, CreateTime, Remark);
-        }
+        public override String ToString() => String.Format("{0} {1} {2} {3:yyyy-MM-dd HH:mm:ss} {4}", Category, Action, UserName, CreateTime, Remark);
         #endregion
     }
 

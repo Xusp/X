@@ -13,6 +13,9 @@ namespace NewLife.Web
         /// <summary>名称</summary>
         public String Name { get; set; }
 
+        /// <summary>全名</summary>
+        public String FullName { get; set; }
+
         /// <summary>超链接</summary>
         public String Url { get; set; }
 
@@ -53,10 +56,11 @@ namespace NewLife.Web
                 var link = new Link
                 {
                     Html = item.Value,
-                    Name = item.Groups["名称"].Value.Trim(),
+                    FullName = item.Groups["名称"].Value.Trim(),
                     Url = item.Groups["链接"].Value.Trim()
                 };
                 link.RawUrl = link.Url;
+                link.Name = link.FullName;
 
                 // 过滤器
                 if (filter != null && !filter(link)) continue;
@@ -88,6 +92,10 @@ namespace NewLife.Web
                 // 分割版本，_v1.0.0.0
                 link.ParseVersion();
 
+                // 去掉后缀
+                var p = link.Name.LastIndexOf('.');
+                if (p > 0) link.Name = link.Name.Substring(0, p);
+
                 list.Add(link);
             }
 
@@ -108,8 +116,9 @@ namespace NewLife.Web
             {
                 var link = new Link
                 {
-                    Name = item
+                    FullName = item
                 };
+                link.Name = link.FullName;
                 //link.Name = Path.GetFileNameWithoutExtension(item);
                 //link.Url = new Uri(buri, item).ToString();
                 //link.RawUrl = link.Url;
@@ -132,19 +141,50 @@ namespace NewLife.Web
                 idx = link.ParseVersion();
                 if (idx > 0) link.Title = link.Title.Substring(0, idx);
 
+                // 去掉后缀
+                var p = link.Name.LastIndexOf('.');
+                if (p > 0) link.Name = link.Name.Substring(0, p);
+
                 list.Add(link);
             }
 
             return list.ToArray();
         }
 
+        /// <summary>分解文件</summary>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        public Link Parse(String file)
+        {
+            RawUrl = file;
+            FullName = Path.GetFileName(file);
+            Name = FullName;
+
+            ParseTime();
+            ParseVersion();
+
+            // 去掉后缀
+            var p = Name.LastIndexOf('.');
+            if (p > 0) Name = Name.Substring(0, p);
+
+            // 时间
+            if (Time.Year < 2000)
+            {
+                var fi = file.AsFile();
+                if (fi != null && fi.Exists) Time = fi.LastWriteTime;
+            }
+
+            return this;
+        }
+
         Int32 ParseTime()
         {
+            var name = Name;
             // 分割名称，计算结尾的时间 yyyyMMddHHmmss
-            var p = Name.LastIndexOf("_");
+            var p = name.LastIndexOf("_");
             if (p <= 0) return -1;
 
-            var ts = Name.Substring(p + 1);
+            var ts = name.Substring(p + 1);
             if (ts.StartsWith("20") && ts.Length >= 4 + 2 + 2 + 2 + 2 + 2)
             {
                 Time = new DateTime(
@@ -154,6 +194,8 @@ namespace NewLife.Web
                     ts.Substring(8, 2).ToInt(),
                     ts.Substring(10, 2).ToInt(),
                     ts.Substring(12, 2).ToInt());
+
+                Name = name.Substring(0, p) + name.Substring(p + 1 + 14);
             }
 
             return p;
@@ -161,24 +203,22 @@ namespace NewLife.Web
 
         Int32 ParseVersion()
         {
+            var name = Name;
             // 分割版本，_v1.0.0.0
-            var vs = Name.CutStart("_v", "_V", ".v", ".V", "v", " V");
-            if (vs == Name)
-            {
-                // 也可能没有v，但是这是必须有圆点
-                if (Name.Contains(".") && (Name.Contains(" ") || Name.Contains("_")))
-                {
-                    vs = Name.CutStart(" ", "_");
-                    if (!Name.Contains(".")) return -1;
-                }
-            }
-            if (vs == Name) return -1;
+            var p = IndexOfAny(name, new[] { "_v", "_V", ".v", ".V", " v", " V" }, 0);
+            if (p <= 0) return -1;
 
-            // 返回位置
-            var p = Name.LastIndexOf(vs) - 2;
+            // 后续位置
+            var p2 = name.IndexOfAny(new[] { ' ', '_', '-' }, p + 2);
+            if (p2 < 0)
+            {
+                p2 = name.LastIndexOf('.');
+                if (p2 <= p) p2 = -1;
+            }
+            if (p2 < 0) p2 = name.Length;
 
             // 尾部截断
-            vs = vs.CutEnd(" ", "_", "-");
+            var vs = name.Substring(p + 2, p2 - p - 2);
             // 有可能只有_v1，而没有子版本
             var ss = vs.SplitAsInt(".");
             if (ss.Length > 0)
@@ -200,10 +240,25 @@ namespace NewLife.Web
                     default:
                         break;
                 }
+
+                var str = name.Substring(0, p);
+                if (p2 < name.Length) str += name.Substring(p2);
+                Name = str;
             }
 
             // 返回位置
             return p;
+        }
+
+        private static Int32 IndexOfAny(String str, String[] anyOf, Int32 startIndex)
+        {
+            foreach (var item in anyOf)
+            {
+                var p = str.IndexOf(item, startIndex);
+                if (p >= 0) return p;
+            }
+
+            return -1;
         }
 
         /// <summary>已重载。</summary>

@@ -1,15 +1,9 @@
 ﻿using System;
-using System.Diagnostics;
-using System.IO;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-#if __MOBILE__
-#elif __CORE__
-#else
+#if !__CORE__
 using System.Windows.Forms;
 #endif
 using NewLife.Reflection;
@@ -72,26 +66,16 @@ namespace NewLife.Log
         #region 构造
         static XTrace()
         {
-#if __CORE__
-#else
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
-#endif
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
 
             ThreadPoolX.Init();
         }
-
-#if __MOBILE__
-        static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        static void CurrentDomain_UnhandledException(Object sender, UnhandledExceptionEventArgs e)
         {
-            var msg = "" + e.ExceptionObject;
-            WriteLine(msg);
-            if (e.IsTerminating)
-            {
-                Log.Fatal("异常退出！");
-            }
+            WriteException(e.ExceptionObject as Exception);
+            if (e.IsTerminating) Log.Fatal("异常退出！");
         }
-#endif
 
         private static void TaskScheduler_UnobservedTaskException(Object sender, UnobservedTaskExceptionEventArgs e)
         {
@@ -106,7 +90,7 @@ namespace NewLife.Log
             }
         }
 
-        static Object _lock = new Object();
+        static readonly Object _lock = new Object();
         static Int32 _initing = 0;
 
         /// <summary>
@@ -132,11 +116,7 @@ namespace NewLife.Log
                 if (_Log != null) return true;
 
                 _initing = Thread.CurrentThread.ManagedThreadId;
-#if !__MOBILE__
                 _Log = TextFileLog.Create(LogPath);
-#else
-                _Log = new NetworkLog();
-#endif
 
                 var set = Setting.Current;
                 if (!set.NetworkLog.IsNullOrEmpty())
@@ -155,7 +135,6 @@ namespace NewLife.Log
         #endregion
 
         #region 使用控制台输出
-#if !__MOBILE__
         private static Boolean _useConsole;
         /// <summary>使用控制台输出日志，只能调用一次</summary>
         /// <param name="useColor">是否使用颜色，默认使用</param>
@@ -165,9 +144,7 @@ namespace NewLife.Log
             if (_useConsole) return;
             _useConsole = true;
 
-#if !__CORE__
             if (!Runtime.IsConsole) return;
-#endif
 
             // 适当加大控制台窗口
             try
@@ -183,13 +160,10 @@ namespace NewLife.Log
             else
                 _Log = clg;
         }
-#endif
         #endregion
 
         #region 拦截WinForm异常
-#if __MOBILE__
-#elif __CORE__
-#else
+#if !__CORE__
         private static Int32 initWF = 0;
         private static Boolean _ShowErrorMessage;
         //private static String _Title;
@@ -203,27 +177,17 @@ namespace NewLife.Log
             if (initWF > 0 || Interlocked.CompareExchange(ref initWF, 1, 0) != 0) return;
             //if (!Application.MessageLoop) return;
 
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException2;
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += Application_ThreadException;
         }
 
-        static void CurrentDomain_UnhandledException(Object sender, UnhandledExceptionEventArgs e)
+        static void CurrentDomain_UnhandledException2(Object sender, UnhandledExceptionEventArgs e)
         {
             var show = _ShowErrorMessage && Application.MessageLoop;
             var ex = e.ExceptionObject as Exception;
-            var msg = ex == null ? "" : ex.Message;
-            WriteException(ex);
-            if (e.IsTerminating)
-            {
-                Log.Fatal("异常退出！" + msg);
-                if (show) MessageBox.Show(msg, "异常退出", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
-                ex = ex.GetTrue();
-                if (ex != null) Log.Error(ex.Message);
-                if (show) MessageBox.Show(msg, "出错", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            var title = e.IsTerminating ? "异常退出" : "出错";
+            if (show) MessageBox.Show(ex?.Message, title, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
         static void Application_ThreadException(Object sender, ThreadExceptionEventArgs e)
@@ -297,112 +261,15 @@ namespace NewLife.Log
         public static String TempPath { get; set; } = Setting.Current.TempPath;
         #endregion
 
-        #region 调用栈
-#if __CORE__
-#else
-        /// <summary>堆栈调试。
-        /// 输出堆栈信息，用于调试时处理调用上下文。
-        /// 本方法会造成大量日志，请慎用。
-        /// </summary>
-        public static void DebugStack()
-        {
-            var msg = GetCaller(2, 16, Environment.NewLine);
-            WriteLine("调用堆栈：" + Environment.NewLine + msg);
-        }
-
-        /// <summary>堆栈调试。</summary>
-        /// <param name="maxNum">最大捕获堆栈方法数</param>
-        public static void DebugStack(Int32 maxNum)
-        {
-            var msg = GetCaller(2, maxNum, Environment.NewLine);
-            WriteLine("调用堆栈：" + Environment.NewLine + msg);
-        }
-
-        /// <summary>堆栈调试</summary>
-        /// <param name="start">开始方法数，0是DebugStack的直接调用者</param>
-        /// <param name="maxNum">最大捕获堆栈方法数</param>
-        public static void DebugStack(Int32 start, Int32 maxNum)
-        {
-            // 至少跳过当前这个
-            if (start < 1) start = 1;
-            var msg = GetCaller(start + 1, maxNum, Environment.NewLine);
-            WriteLine("调用堆栈：" + Environment.NewLine + msg);
-        }
-
-        /// <summary>获取调用栈</summary>
-        /// <param name="start">要跳过的方法数，默认1，也就是跳过GetCaller</param>
-        /// <param name="maxNum">最大层数</param>
-        /// <param name="split">分割符号，默认左箭头加上换行</param>
-        /// <returns></returns>
-        public static String GetCaller(Int32 start = 1, Int32 maxNum = 0, String split = null)
-        {
-            // 至少跳过当前这个
-            if (start < 1) start = 1;
-            var st = new StackTrace(start, true);
-
-            if (String.IsNullOrEmpty(split)) split = "<-" + Environment.NewLine;
-
-            Type last = null;
-            var asm = Assembly.GetEntryAssembly();
-            var entry = asm?.EntryPoint;
-
-            var count = st.FrameCount;
-            var sb = new StringBuilder(count * 20);
-            //if (maxNum > 0 && maxNum < count) count = maxNum;
-            for (var i = 0; i < count && maxNum > 0; i++)
-            {
-                var sf = st.GetFrame(i);
-                var method = sf.GetMethod();
-
-                // 跳过<>类型的匿名方法
-                if (method == null || String.IsNullOrEmpty(method.Name) || method.Name[0] == '<' && method.Name.Contains(">")) continue;
-
-                // 跳过有[DebuggerHidden]特性的方法
-                if (method.GetCustomAttribute<DebuggerHiddenAttribute>() != null) continue;
-
-                var type = method.DeclaringType ?? method.ReflectedType;
-                if (type != null) sb.Append(type.Name);
-                sb.Append(".");
-
-                var name = method.ToString();
-                // 去掉前面的返回类型
-                var p = name.IndexOf(" ");
-                if (p >= 0) name = name.Substring(p + 1);
-                // 去掉前面的System
-                name = name
-                    .Replace("System.Web.", null)
-                    .Replace("System.", null);
-
-                sb.Append(name);
-
-                // 如果到达了入口点，可以结束了
-                if (method == entry) break;
-
-                if (i < count - 1) sb.Append(split);
-
-                last = type;
-
-                maxNum--;
-            }
-            return sb.ToString();
-        }
-#endif
-        #endregion
-
         #region 版本信息
         /// <summary>输出核心库和启动程序的版本号</summary>
         public static void WriteVersion()
         {
-#if __CORE__
-            var asm2 = Assembly.GetEntryAssembly();
-            WriteVersion(asm2);
-#else
             var asm = Assembly.GetExecutingAssembly();
             WriteVersion(asm);
 
             var asm2 = Assembly.GetEntryAssembly();
             if (asm2 != asm) WriteVersion(asm2);
-#endif
         }
 
         /// <summary>输出程序集版本</summary>

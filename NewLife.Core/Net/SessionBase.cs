@@ -16,6 +16,9 @@ namespace NewLife.Net
     public abstract class SessionBase : DisposeBase, ISocketClient, ITransport
     {
         #region 属性
+        /// <summary>标识</summary>
+        public Int32 ID { get; internal set; }
+
         /// <summary>名称</summary>
         public String Name { get; set; }
 
@@ -64,6 +67,7 @@ namespace NewLife.Net
 
         /// <summary>缓冲区大小。默认8k</summary>
         public Int32 BufferSize { get; set; }
+
         #endregion
 
         #region 构造
@@ -524,11 +528,7 @@ namespace NewLife.Net
 
             message = Pipeline.Write(ctx, message);
 
-#if NET4
-            if (!ctx.FireWrite(message)) return TaskEx.FromResult((Object)null);
-#else
             if (!ctx.FireWrite(message)) return Task.FromResult((Object)null);
-#endif
 
             return source.Task;
         }

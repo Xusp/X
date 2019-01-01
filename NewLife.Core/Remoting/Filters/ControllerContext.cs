@@ -39,21 +39,36 @@ namespace NewLife.Remoting
         /// <summary>实例化</summary>
         public ControllerContext() { }
 
-        /// <summary>拷贝实例化</summary>
-        /// <param name="context"></param>
-        public ControllerContext(ControllerContext context)
-        {
-            Controller = context.Controller;
-            Action = context.Action;
-            ActionName = context.ActionName;
-            Session = context.Session;
-            Request = context.Request;
-            Parameters = context.Parameters;
-        }
+        ///// <summary>拷贝实例化</summary>
+        ///// <param name="context"></param>
+        //public ControllerContext(ControllerContext context)
+        //{
+        //    Controller = context.Controller;
+        //    Action = context.Action;
+        //    ActionName = context.ActionName;
+        //    Session = context.Session;
+        //    Request = context.Request;
+        //    Parameters = context.Parameters;
+        //}
 
         [ThreadStatic]
         private static ControllerContext _Current;
         /// <summary>当前线程上下文</summary>
         public static ControllerContext Current { get { return _Current; } set { _Current = value; } }
+
+        /// <summary>重置为默认状态</summary>
+        public void Reset()
+        {
+            Controller = null;
+            Action = null;
+            ActionName = null;
+            Session = null;
+            Request = null;
+            Parameters = null;
+            ActionParameters = null;
+            Result = null;
+            Exception = null;
+            ExceptionHandled = false;
+        }
     }
 }

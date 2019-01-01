@@ -88,6 +88,7 @@ namespace NewLife.Net
 
         /// <summary>缓冲区大小。默认8k</summary>
         public Int32 BufferSize { get { return Server.BufferSize; } set { Server.BufferSize = value; } }
+
         #endregion
 
         #region 构造
@@ -166,11 +167,7 @@ namespace NewLife.Net
 
             message = Pipeline.Write(ctx, message);
 
-#if NET4
-            if (!ctx.FireWrite(message)) return TaskEx.FromResult((Object)null);
-#else
             if (!ctx.FireWrite(message)) return Task.FromResult((Object)null);
-#endif
 
             return source.Task;
         }
